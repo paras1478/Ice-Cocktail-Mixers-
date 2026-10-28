@@ -14,3 +14,18 @@ describe("production DATABASE_URL guard", () => {
     expect(productionDbUrlProblem("postgresql://u:p@dpg-abc123-a.oregon-postgres.render.com/icemixers?sslmode=require")).toBeNull();
   });
 });
+
+import { describeDbUrl } from "../src/lib/dbUrl.js";
+describe("DATABASE_URL diagnostic", () => {
+  it("reports only presence, scheme, hostname and format mistakes, never credentials or query", () => {
+    const ok = JSON.stringify(describeDbUrl("postgresql://user:secretpw@dpg-abc-a.oregon-postgres.render.com/db?sslmode=require&x=secretq"));
+    expect(ok).toContain("dpg-abc-a.oregon-postgres.render.com");
+    expect(ok).not.toMatch(/secretpw|secretq|user/);
+    const bad = JSON.stringify(describeDbUrl('"postgresql://user:secretpw@host/db"'));
+    expect(bad).toContain('"hasWrappingQuotes":true');
+    expect(JSON.stringify(describeDbUrl("mongodb+srv://u:secretpw@c.mongodb.net/"))).not.toContain("secretpw");
+    expect(describeDbUrl(undefined)).toEqual({ present: false });
+    expect(productionDbUrlProblem('"postgresql://u:p@dpg-x/db"')).toMatch(/quotes/);
+    expect(productionDbUrlProblem(" postgresql://u:p@dpg-x/db")).toMatch(/spaces/);
+  });
+});
