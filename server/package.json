@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.build.json",
-    "start": "prisma migrate deploy && node dist/src/index.js",
+    "start": "prisma migrate deploy && tsx scripts/seed-if-empty.ts && node dist/src/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:migrate": "prisma migrate dev",
