@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "node:crypto";
 import { createApp } from "../src/app.js";
 import { prisma } from "../src/lib/db.js";
 import { AccountStoreUnavailable, DuplicateAccountError, NO_LOCAL_PASSWORD, setCredentialStore, type Account, type CredentialStore } from "../src/services/accounts.js";
@@ -148,7 +149,7 @@ describe("accounts stored in MongoDB (credential store)", () => {
 
   it("an interrupted sign-up (credentials stored, profile missing) is completed at the next login", async () => {
     const e = email();
-    const id = "a".repeat(24);
+    const id = randomBytes(12).toString("hex"); // unique per run: a fixed id would collide with a row left by an earlier run
     await store.insert({ id, email: e, name: "Half Made", phone: null, passwordHash: await bcrypt.hash(PW, 4) });
     const res = await request(app).post("/api/auth/login").send({ email: e, password: PW }).expect(200);
     expect(res.body.user.id).toBe(id);
