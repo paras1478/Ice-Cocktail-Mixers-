@@ -47,5 +47,5 @@ export const clientOrigins = (() => {
     process.exit(1);
   }
 })();
-export const trustProxy = env.TRUST_PROXY ? env.TRUST_PROXY === "true" : env.NODE_ENV === "production";
+export const trustProxy = env.TRUST_PROXY ? env.TRUST_PROXY === "true" : env.NODE_ENV === "production" || process.env.RENDER === "true"; // Render sets RENDER=true
 export const allowSamplePrices = env.ALLOW_SAMPLE_PRICES ? env.ALLOW_SAMPLE_PRICES === "true" : env.NODE_ENV !== "production";
