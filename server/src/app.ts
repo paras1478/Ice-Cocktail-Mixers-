@@ -16,6 +16,8 @@ import { orderRouter } from "./routes/orders.js";
 import { publicRouter, adminRouter } from "./routes/misc.js";
 import { errorHandler, notFound } from "./middleware/error.js";
 
+const warnedOrigins = new Set<string>();
+
 export function createApp() {
   // Optional MongoDB Atlas credential store (MONGODB_URI). Connection problems are logged without credentials and never crash the server.
   if (!credentialStore()) {
@@ -35,7 +37,14 @@ export function createApp() {
   app.use(
     cors({
       // Requests without an Origin header (same-site, curl, health checks) are allowed; browsers must come from a listed origin.
-      origin: (origin, cb) => cb(null, !origin || clientOrigins.includes(origin)),
+      origin: (origin, cb) => {
+        const ok = !origin || clientOrigins.includes(origin);
+        if (!ok && !warnedOrigins.has(origin)) {
+          warnedOrigins.add(origin); // once per origin; origins are public values, not secrets
+          console.warn(`[cors] blocked origin ${origin}. Allowed: ${clientOrigins.join(", ")}. Add it to CLIENT_ORIGIN (comma-separated) to allow it.`);
+        }
+        cb(null, ok);
+      },
       credentials: true,
     }),
   );
