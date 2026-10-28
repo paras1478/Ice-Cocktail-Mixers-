@@ -1,0 +1,168 @@
+{
+  "checkedAt": "2026-10-28T08:11:17.672Z",
+  "comingSoon": [],
+  "report": [
+    {
+      "kind": "product",
+      "name": "crushed-ice-1kg",
+      "url": "/img/stock/crushed-ice.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "crystal-clear-party-ice-1kg",
+      "url": "/img/stock/ice-cubes.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "spicy-mango-margarita-500ml",
+      "url": "/img/stock/mango-juice-bottle.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "schweppes-indian-tonic-water-300ml",
+      "url": "/img/products/schweppes-indian-tonic-water-300ml.png",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "spicy-ginger-beer-300ml",
+      "url": "/img/stock/ginger-lemon-cooler.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "margarita-mixer-500ml",
+      "url": "/img/stock/lime-drink.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "aromatic-bitters-sample",
+      "url": "/img/stock/bitters-bottle.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "dehydrated-orange-garnish",
+      "url": "/img/stock/dehydrated-orange.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "paper-straws-50",
+      "url": "/img/stock/paper-straws.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "stainless-jigger",
+      "url": "/img/stock/jigger.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "ginger-ale-300ml",
+      "url": "/img/stock/golden-fizzy-drink.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "orange-bitters-sample",
+      "url": "/img/stock/bitters-glass-bottles.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "bisleri-club-soda-750ml",
+      "url": "/img/products/bisleri-club-soda-750ml.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "sparkling-water-750ml",
+      "url": "/img/stock/sparkling-water-glass.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "cocktail-shaker",
+      "url": "/img/stock/bar-shaker.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "svami-original-craft-tonic-water-200ml",
+      "url": "/img/products/svami-original-craft-tonic-water-200ml.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "party-ice-5kg",
+      "url": "/img/stock/ice-bucket.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "dehydrated-lime-garnish-sample",
+      "url": "/img/stock/dehydrated-lime.jpg",
+      "ok": true
+    },
+    {
+      "kind": "product",
+      "name": "margarita-rimming-salt",
+      "url": "/img/stock/salt-wooden-spoon.jpg",
+      "ok": true
+    },
+    {
+      "kind": "category",
+      "name": "ice-bags",
+      "url": "/img/stock/ice-cubes.jpg",
+      "ok": true
+    },
+    {
+      "kind": "category",
+      "name": "tonic-water",
+      "url": "/img/stock/category-tonic-water.jpg",
+      "ok": true
+    },
+    {
+      "kind": "category",
+      "name": "club-soda",
+      "url": "/img/stock/category-club-soda.jpg",
+      "ok": true
+    },
+    {
+      "kind": "category",
+      "name": "margarita-mixes",
+      "url": "/img/stock/category-margarita-mixes.jpg",
+      "ok": true
+    },
+    {
+      "kind": "category",
+      "name": "bitters",
+      "url": "/img/stock/bitters-bottle.jpg",
+      "ok": true
+    },
+    {
+      "kind": "category",
+      "name": "citrus-garnishes",
+      "url": "/img/stock/dehydrated-orange.jpg",
+      "ok": true
+    },
+    {
+      "kind": "category",
+      "name": "party-bundles",
+      "url": "/img/stock/category-party-bundles.jpg",
+      "ok": true
+    },
+    {
+      "kind": "category",
+      "name": "party-essentials",
+      "url": "/img/stock/bar-shaker.jpg",
+      "ok": true
+    }
+  ]
+}

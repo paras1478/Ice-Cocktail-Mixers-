@@ -1,0 +1,281 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// All money fields are integer minor units (paise), never floats.
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+enum OrderStatus {
+  PLACED
+  CONFIRMED
+  PREPARING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+enum PaymentMethod {
+  COD
+  CARD
+}
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+enum AddressType {
+  HOME
+  WORK
+  OTHER
+}
+enum PriceStatus {
+  VERIFIED
+  SAMPLE
+}
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role      @default(CUSTOMER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  addresses    Address[]
+  orders       Order[]
+  cart         Cart?
+}
+
+model Address {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label         String      @default("Home")
+  type          AddressType @default(HOME)
+  recipientName String?
+  phone         String?
+  house         String?     // house / flat number
+  line1         String      // building, street, locality
+  line2         String?     // legacy
+  landmark      String?
+  area          String?     // postal area / post office (from the PIN lookup, editable)
+  district      String?
+  city          String
+  state         String
+  stateCode     String?     // ISO 3166-2:IN, derived from the state name
+  pincode       String
+  latitude      Float?      // only when the customer chose GPS
+  longitude     Float?
+  confirmedAt   DateTime?   // when the customer last confirmed this address
+  isDefault     Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  orders        Order[]
+  @@index([userId])
+}
+
+// The fixed, approved storefront categories (see src/lib/catalog.ts). Hidden ones (isActive = false) are archived.
+model Category {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  name        String
+  description String    @default("")
+  imageUrl    String?
+  icon        String?
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  products    Product[]
+}
+
+model Product {
+  id            String         @id @default(cuid())
+  slug          String         @unique
+  sku           String?        @unique // internal store identifier (editable in Admin)
+  name          String
+  brand         String?        // null for unbranded items
+  variantGroup  String?        // products sharing a group are offered as pack sizes of one another
+  description   String         @default("")
+  details       String?        // ingredients / product details, only from the product label
+  packSize      String
+  priceMinor    Int
+  mrpMinor      Int?           // original price; only shown when priceStatus = VERIFIED
+  priceStatus      PriceStatus @default(SAMPLE)
+  priceSourceUrl   String?
+  priceVerifiedAt  DateTime?
+  priceNotes       String?
+  stock         Int            @default(0)
+  lowStockAt    Int            @default(10)
+  popularity    Int            @default(0)
+  isActive      Boolean        @default(true)
+  isDemo        Boolean        @default(true)
+  categoryId    String
+  category      Category       @relation(fields: [categoryId], references: [id])
+  images        ProductImage[]
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+  bundleItems   BundleItem[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  @@index([categoryId])
+  @@index([name])
+  @@index([isActive, popularity])
+  @@index([variantGroup])
+}
+
+model ProductImage {
+  id            String    @id @default(cuid())
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url           String
+  alt           String
+  sortOrder     Int       @default(0)
+  isPlaceholder Boolean   @default(true) // true = stand-in, not a real photo of this exact product
+  sourceUrl     String?
+  license       String?
+  attribution   String?
+  lastCheckedAt DateTime?
+  lastCheckOk   Boolean?
+  @@index([productId])
+}
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  cartId    String
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int
+  @@unique([cartId, productId])
+}
+
+model Discount {
+  id               String       @id @default(cuid())
+  code             String       @unique
+  type             DiscountType
+  value            Int          // percent (1-100) or minor units
+  minSubtotalMinor Int          @default(0)
+  maxUses          Int?
+  usedCount        Int          @default(0)
+  expiresAt        DateTime?
+  isActive         Boolean      @default(true)
+  orders           Order[]
+}
+
+model Bundle {
+  id          String       @id @default(cuid())
+  slug        String       @unique
+  name        String
+  description String       @default("")
+  imageUrl    String?
+  priceMinor  Int          // bundle price; savings = sum(items) - priceMinor
+  isActive    Boolean      @default(true)
+  items       BundleItem[]
+}
+
+model BundleItem {
+  id        String  @id @default(cuid())
+  bundleId  String
+  bundle    Bundle  @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int     @default(1)
+  @@unique([bundleId, productId])
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  number        Int         @unique @default(autoincrement())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  status        OrderStatus @default(PLACED)
+  subtotalMinor Int
+  discountMinor Int         @default(0)
+  deliveryMinor Int
+  taxMinor      Int
+  totalMinor    Int
+  discountId    String?
+  discount      Discount?   @relation(fields: [discountId], references: [id])
+  contactName   String
+  contactPhone  String
+  // Immutable delivery-address snapshot (never changes when the customer edits a saved address)
+  addrLine1       String
+  addrLine2       String?
+  addrCity        String
+  addrState       String
+  addrStateCode   String?
+  addrPincode     String
+  addrHouse       String?
+  addrLandmark    String?
+  addrArea        String?
+  addrDistrict    String?
+  addrType        AddressType?
+  addrLatitude    Float?
+  addrLongitude   Float?
+  addrConfirmedAt DateTime?
+  addressId     String?
+  address       Address?    @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  instructions  String?
+  estimatedDeliveryAt DateTime?
+  items         OrderItem[]
+  payment       Payment?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model OrderItem {
+  id         String  @id @default(cuid())
+  orderId    String
+  order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product @relation(fields: [productId], references: [id])
+  name       String
+  unitMinor  Int
+  quantity   Int
+  @@index([orderId])
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  orderId     String        @unique
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method      PaymentMethod
+  status      PaymentStatus @default(PENDING)
+  amountMinor Int
+  providerRef String?
+  createdAt   DateTime      @default(now())
+}
+
+// Serviceable pincodes with an operator-set ETA. No row means not serviceable.
+// This is delivery coverage; a postal PIN lookup alone never implies serviceability.
+model ServiceArea {
+  pincode    String   @id
+  areaName   String
+  city       String?
+  state      String?
+  etaMinutes Int
+  isActive   Boolean  @default(true)
+  isSample   Boolean  @default(false) // development sample coverage, to be replaced by the operator's real coverage
+  updatedAt  DateTime @default(now()) @updatedAt
+}
