@@ -15,12 +15,14 @@ describe("frontend environment files", () => {
     expect(url).toBe("https://ice-cocktail-mixers.onrender.com");
     expect(resolveApiBase(url)).toBe("https://ice-cocktail-mixers.onrender.com/api");
   });
-  it("local development never points at a production or hardcoded backend (it uses the Vite proxy)", () => {
+  it("local development files use the Vite proxy (empty) or a localhost backend, never the production host", () => {
     for (const f of [".env", ".env.development", ".env.local", ".env.development.local"]) {
       const v = value(read(f), "VITE_API_URL");
-      expect(v === undefined || v === "", `${f} must leave VITE_API_URL empty for local development`).toBe(true);
+      const local = v === undefined || v === "" || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/api)?\/?$/.test(v);
+      expect(local, `${f} must not point local development at a remote backend (got "${v}")`).toBe(true);
     }
     expect(resolveApiBase("")).toBe("/api");
+    expect(resolveApiBase("http://localhost:4000")).toBe("http://localhost:4000/api");
   });
   it("no VITE_ variable looks like a secret", () => {
     for (const f of [".env", ".env.example", ".env.production"]) {

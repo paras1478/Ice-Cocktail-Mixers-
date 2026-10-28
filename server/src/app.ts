@@ -5,6 +5,9 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { clientOrigins, env, trustProxy } from "./lib/env.js";
 import { prisma } from "./lib/db.js";
+import { classifyDbError } from "./lib/dbHealth.js";
+import { createMongoStoreFromEnv, mongoReason, sanitize } from "./lib/mongo.js";
+import { credentialStore, setCredentialStore } from "./services/accounts.js";
 import { authRouter } from "./routes/auth.js";
 import { addressRouter } from "./routes/addresses.js";
 import { productRouter, categoryRouter, searchRouter } from "./routes/catalog.js";
@@ -14,6 +17,17 @@ import { publicRouter, adminRouter } from "./routes/misc.js";
 import { errorHandler, notFound } from "./middleware/error.js";
 
 export function createApp() {
+  // Optional MongoDB Atlas credential store (MONGODB_URI). Connection problems are logged without credentials and never crash the server.
+  if (!credentialStore()) {
+    const mongo = createMongoStoreFromEnv();
+    if (mongo) {
+      setCredentialStore(mongo);
+      mongo.connect().then(
+        () => console.log("[mongodb] connected: user accounts are stored in MongoDB Atlas"),
+        (e) => console.error("[mongodb] could not connect:", mongoReason(e).reason, "-", sanitize(e)),
+      );
+    }
+  }
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
@@ -45,14 +59,20 @@ export function createApp() {
   app.get("/api/health/db", async (_req, res) => {
     try {
       const categories = await prisma.category.count();
-      res.json({ ok: true, db: true, categories });
+      // Accounts: only reports whether MongoDB answers (never the URI, host or credentials).
+      const mongoStore = credentialStore();
+      let mongo: { configured: boolean; ok?: boolean; reason?: string; hint?: string } = { configured: false };
+      if (mongoStore && "ping" in mongoStore) {
+        try {
+          await (mongoStore as { ping(): Promise<void> }).ping();
+          mongo = { configured: true, ok: true };
+        } catch (e) {
+          mongo = { configured: true, ok: false, ...mongoReason(e) };
+        }
+      }
+      res.status(mongo.configured && !mongo.ok ? 503 : 200).json({ ok: !mongo.configured || !!mongo.ok, db: true, categories, mongo });
     } catch (e) {
-      const code = (e as { code?: string }).code ?? (e as Error).name;
-      const hint =
-        code === "P2021" || code === "P2022" ? "The database is reachable but its tables are missing or outdated: run `npx prisma migrate deploy` against it."
-        : code === "PrismaClientInitializationError" || /^P100\d$/.test(code) ? "The database cannot be reached or rejected the login: check DATABASE_URL."
-        : "Database query failed: see the server logs.";
-      res.status(503).json({ ok: false, db: false, code, hint });
+      res.status(503).json({ ok: false, db: false, ...classifyDbError(e) });
     }
   });
   app.use("/api/auth", authRouter);

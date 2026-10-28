@@ -525,6 +525,13 @@ describe("CORS and deployment health", () => {
     expect(parseOrigins(" https://a.vercel.app , http://localhost:5173/ ,https://a.vercel.app")).toEqual(["https://a.vercel.app", "http://localhost:5173"]);
     expect(parseOrigins("")).toEqual([]);
     expect(() => parseOrigins("not a url")).toThrow(/invalid URL/);
+    const { allowedOrigins } = await import("../src/lib/origins.js");
+    const prod = ["https://ice-cocktail-beta.vercel.app"];
+    expect(allowedOrigins(prod, "production")).toEqual(prod); // production: exactly what is configured, never localhost
+    expect(allowedOrigins(prod, "test")).toEqual(prod);
+    const dev = allowedOrigins(prod, "development");
+    expect(dev).toEqual(expect.arrayContaining(["https://ice-cocktail-beta.vercel.app", "http://localhost:5173", "http://127.0.0.1:5173"]));
+    expect(new Set(dev).size).toBe(dev.length);
   });
   it("allows the configured origin (exact match, with credentials) and not others", async () => {
     const ok = await request(app).options("/api/categories").set("Origin", "http://localhost:5173").set("Access-Control-Request-Method", "GET").expect(204);
@@ -540,5 +547,21 @@ describe("CORS and deployment health", () => {
     expect(r.body).toMatchObject({ ok: true, db: true });
     expect(typeof r.body.categories).toBe("number");
     expect(JSON.stringify(r.body)).not.toMatch(/postgres|password|DATABASE_URL/i);
+  });
+});
+
+describe("database health diagnosis", () => {
+  it("names the cause of a database failure without leaking connection details", async () => {
+    const { classifyDbError } = await import("../src/lib/dbHealth.js");
+    const mongo = classifyDbError({ name: "PrismaClientInitializationError", message: "Invalid `prisma.category.count()` invocation:\nerror: Error validating datasource `db`: the URL must start with the protocol `postgresql://` or `postgres://`." });
+    expect(mongo).toMatchObject({ reason: "NOT_POSTGRES_URL", code: "PrismaClientInitializationError" });
+    expect(mongo.hint).toMatch(/mongodb/i);
+    expect(classifyDbError({ name: "PrismaClientInitializationError", message: "Can't reach database server at `db.internal.example:5432`" }).reason).toBe("UNREACHABLE");
+    expect(classifyDbError({ name: "PrismaClientInitializationError", message: "Authentication failed against database server, the provided database credentials for `app` are not valid." }).reason).toBe("AUTH_FAILED");
+    expect(classifyDbError({ name: "PrismaClientInitializationError", message: "Database `shop` does not exist on the database server" }).reason).toBe("DATABASE_MISSING");
+    expect(classifyDbError({ code: "P2021", message: "The table `public.Category` does not exist" }).reason).toBe("TABLES_MISSING");
+    expect(classifyDbError({ name: "SomethingElse", message: "boom" }).reason).toBe("UNKNOWN");
+    // the host from the raw message must never appear in the response
+    expect(JSON.stringify(classifyDbError({ name: "PrismaClientInitializationError", message: "Can't reach database server at `secret-host.internal:5432`" }))).not.toMatch(/secret-host|5432/);
   });
 });

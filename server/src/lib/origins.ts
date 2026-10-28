@@ -1,3 +1,11 @@
+/** The standard Vite dev-server and preview origins. Allowed automatically in development only, so a local frontend can always reach a local API. */
+export const DEV_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173", "http://127.0.0.1:4173"];
+
+/** CLIENT_ORIGIN plus, in development only, the local Vite origins. Production allows exactly what CLIENT_ORIGIN lists. */
+export function allowedOrigins(configured: string[], nodeEnv: string): string[] {
+  return nodeEnv === "development" ? [...new Set([...configured, ...DEV_ORIGINS])] : configured;
+}
+
 /**
  * Parses CLIENT_ORIGIN into the list of allowed browser origins.
  * Accepts one origin or a comma-separated list, and tolerates what people actually paste: a trailing slash

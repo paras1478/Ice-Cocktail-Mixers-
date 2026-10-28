@@ -1,9 +1,13 @@
 import "dotenv/config";
 import { z } from "zod";
-import { parseOrigins } from "./origins.js";
+import { allowedOrigins, parseOrigins } from "./origins.js";
 
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
+  // Optional. When set, user credentials (email + password hash) are stored in MongoDB Atlas instead of PostgreSQL (orders, carts and
+  // addresses stay in PostgreSQL). Keep this value in the backend environment only: never in a VITE_ variable and never in source code.
+  MONGODB_URI: z.string().regex(/^mongodb(\+srv)?:\/\//, "MONGODB_URI must start with mongodb:// or mongodb+srv://").optional(),
+  MONGODB_DB: z.string().min(1).default("icemixers"),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   // Browser origin(s) allowed by CORS: one value or a comma-separated list, e.g. "https://app.vercel.app,https://staging.vercel.app".
   CLIENT_ORIGIN: z.string().min(1).default("http://localhost:5173"),
@@ -37,7 +41,7 @@ if (!parsed.success) {
 export const env = parsed.data;
 export const clientOrigins = (() => {
   try {
-    return parseOrigins(env.CLIENT_ORIGIN);
+    return allowedOrigins(parseOrigins(env.CLIENT_ORIGIN), env.NODE_ENV);
   } catch (e) {
     console.error(e instanceof Error ? e.message : e);
     process.exit(1);
