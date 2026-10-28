@@ -3,7 +3,8 @@ import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
-import { clientOrigins, env, trustProxy } from "./lib/env.js";
+import { allowSamplePrices, clientOrigins, env, trustProxy } from "./lib/env.js";
+import { publicProductWhere } from "./lib/publish.js";
 import { prisma } from "./lib/db.js";
 import { classifyDbError } from "./lib/dbHealth.js";
 import { createMongoStoreFromEnv, mongoReason, sanitize } from "./lib/mongo.js";
@@ -68,6 +69,7 @@ export function createApp() {
   app.get("/api/health/db", async (_req, res) => {
     try {
       const categories = await prisma.category.count();
+      const [products, visibleProducts, bundles] = await Promise.all([prisma.product.count(), prisma.product.count({ where: publicProductWhere() }), prisma.bundle.count()]);
       // Accounts: only reports whether MongoDB answers (never the URI, host or credentials).
       const mongoStore = credentialStore();
       let mongo: { configured: boolean; ok?: boolean; reason?: string; hint?: string } = { configured: false };
@@ -79,7 +81,7 @@ export function createApp() {
           mongo = { configured: true, ok: false, ...mongoReason(e) };
         }
       }
-      res.status(mongo.configured && !mongo.ok ? 503 : 200).json({ ok: !mongo.configured || !!mongo.ok, db: true, categories, mongo });
+      res.status(mongo.configured && !mongo.ok ? 503 : 200).json({ ok: !mongo.configured || !!mongo.ok, db: true, categories, products, visibleProducts, bundles, samplePricesVisible: allowSamplePrices, mongo });
     } catch (e) {
       res.status(503).json({ ok: false, db: false, ...classifyDbError(e) });
     }

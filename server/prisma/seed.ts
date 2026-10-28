@@ -13,11 +13,15 @@ const rupees = (n: number) => Math.round(n * 100);
 async function main() {
   const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@example.com";
   const adminPass = process.env.SEED_ADMIN_PASSWORD ?? "ChangeMe123!";
-  await prisma.user.upsert({
-    where: { email: adminEmail },
-    update: {},
-    create: { email: adminEmail, name: "Store Admin", role: "ADMIN", passwordHash: await bcrypt.hash(adminPass, 12) },
-  });
+  if (process.env.NODE_ENV === "production" && (!process.env.SEED_ADMIN_PASSWORD || adminPass === "ChangeMe123!" || adminPass.length < 8)) {
+    console.warn("Admin NOT created: set SEED_ADMIN_EMAIL and a strong SEED_ADMIN_PASSWORD (not the default) to create the admin in production.");
+  } else {
+    await prisma.user.upsert({
+      where: { email: adminEmail },
+      update: {},
+      create: { email: adminEmail, name: "Store Admin", role: "ADMIN", passwordHash: await bcrypt.hash(adminPass, 12) },
+    });
+  }
 
   const catId: Record<string, string> = {};
   for (const [i, c] of categories.entries()) {
