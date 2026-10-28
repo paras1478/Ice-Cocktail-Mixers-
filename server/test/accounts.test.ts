@@ -157,6 +157,44 @@ describe("accounts stored in MongoDB (credential store)", () => {
   });
 });
 
+describe("orders from MongoDB-backed accounts reach the admin panel", () => {
+  it("persists a customer's order in PostgreSQL and lists it for the admin (whose account migrates on first login); failed orders leave nothing behind", async () => {
+    const cat = await prisma.category.upsert({ where: { slug: "ice-bags" }, update: {}, create: { slug: "ice-bags", name: "Ice Bags", sortOrder: 0 } });
+    await prisma.serviceArea.upsert({ where: { pincode: "122018" }, update: { isActive: true }, create: { pincode: "122018", areaName: "Sector 54", city: "Gurgaon", state: "Haryana", etaMinutes: 14 } });
+    const product = await prisma.product.create({ data: { slug: `acct-ice-${Date.now()}`, name: "Order Test Ice", packSize: "1 kg", priceMinor: 6000, stock: 5, categoryId: cat.id } });
+    const body = (items: unknown[]) => ({
+      items, contactName: "Mongo Customer", contactPhone: "9876543210", addressConfirmed: true, paymentMethod: "COD",
+      address: { house: "12", line1: "Test Street, Sector 54", city: "Gurgaon", state: "Haryana", pincode: "122018" },
+    });
+
+    const customerEmail = email();
+    const customer = request.agent(app);
+    const reg = await customer.post("/api/auth/register").send({ name: "Mongo Customer", email: customerEmail, password: PW }).expect(201);
+    const adminEmail = email();
+    const admin = await prisma.user.create({ data: { email: adminEmail, name: "Shop Admin", role: "ADMIN", passwordHash: await bcrypt.hash(PW, 4) } });
+    const adminAgent = request.agent(app);
+    await adminAgent.post("/api/auth/login").send({ email: adminEmail, password: PW }).expect(200);
+    expect(store.docs.has(admin.id)).toBe(true); // admin credentials now live in the store, the role stays in PostgreSQL
+
+    const before = await prisma.order.count({ where: { userId: reg.body.user.id } });
+    // an order that fails (more than the stock) must not be persisted or change the stock
+    await customer.post("/api/orders").send(body([{ productId: product.id, quantity: 6 }])).expect(409);
+    expect(await prisma.order.count({ where: { userId: reg.body.user.id } })).toBe(before);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).stock).toBe(5);
+
+    const placed = (await customer.post("/api/orders").send(body([{ productId: product.id, quantity: 2 }])).expect(201)).body.order;
+    expect(await prisma.order.findUnique({ where: { id: placed.id } })).toMatchObject({ userId: reg.body.user.id, status: "PLACED" }); // really persisted
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).stock).toBe(3);
+
+    const seen = (await adminAgent.get("/api/orders?all=true").expect(200)).body.orders.find((o: { id: string }) => o.id === placed.id);
+    expect(seen).toMatchObject({ id: placed.id, status: "PLACED", user: { email: customerEmail } });
+    expect(JSON.stringify(seen)).not.toMatch(/passwordHash|\$2[aby]\$/); // no credentials in the admin payload
+    expect((await customer.get("/api/orders?all=true").expect(200)).body.orders.map((o: { id: string }) => o.id)).toEqual([placed.id]); // a customer only ever sees their own
+    await customer.get("/api/orders/" + placed.id).expect(200);
+    await request(app).get("/api/orders?all=true").expect(401);
+  });
+});
+
 describe("connection string safety", () => {
   it("never lets credentials reach logs", () => {
     const s = sanitize(new Error("bad auth for mongodb+srv://someUser:somePass@cluster0.example.mongodb.net/db failed"));
