@@ -95,3 +95,50 @@ describe("apiError", () => {
     expect(apiError(e).message).toMatch(/HTTP 502/);
   });
 });
+
+describe("API base URL (VITE_API_URL)", () => {
+  it("defaults to same-origin /api and adds /api when it is missing", async () => {
+    const { resolveApiBase } = await import("./api");
+    expect(resolveApiBase(undefined)).toBe("/api");
+    expect(resolveApiBase("")).toBe("/api");
+    expect(resolveApiBase("   ")).toBe("/api");
+    expect(resolveApiBase("https://ice-cocktail-mixers.onrender.com")).toBe("https://ice-cocktail-mixers.onrender.com/api");
+    expect(resolveApiBase("https://ice-cocktail-mixers.onrender.com/")).toBe("https://ice-cocktail-mixers.onrender.com/api");
+    expect(resolveApiBase("https://ice-cocktail-mixers.onrender.com/api")).toBe("https://ice-cocktail-mixers.onrender.com/api");
+    expect(resolveApiBase("https://ice-cocktail-mixers.onrender.com/api/")).toBe("https://ice-cocktail-mixers.onrender.com/api");
+    expect(resolveApiBase("/api")).toBe("/api");
+  });
+});
+
+describe("API error bodies of any shape never become objects (React #31 crash)", () => {
+  const ax = (status: number, data: unknown) => Object.assign(new Error("x"), { isAxiosError: true, response: { status, data } });
+  it("reads our own { error: string }", () => {
+    expect(apiError(ax(409, { error: "Out of stock" })).message).toBe("Out of stock");
+  });
+  it("reads Vercel's { error: { code, message } } as text (this exact shape crashed the deployed site)", () => {
+    const info = apiError(ax(404, { error: { code: "404", message: "The page could not be found" } }));
+    expect(typeof info.message).toBe("string");
+    expect(info.message).toBe("The page could not be found");
+  });
+  it("falls back to a status message for HTML, empty, array and odd bodies", () => {
+    for (const body of ["<!doctype html><html></html>", "", null, undefined, [], { error: { code: 1 } }, { error: 5 }, 42]) {
+      const m = apiError(ax(404, body)).message;
+      expect(typeof m).toBe("string");
+      expect(m).toBe("Request failed (HTTP 404)");
+    }
+    expect(apiError(ax(502, { error: { nested: true } })).message).toMatch(/Can't reach the API server \(HTTP 502\)/);
+  });
+  it("uses the top-level message field when that is what a proxy sends", () => {
+    expect(apiError(ax(503, { message: "Service Unavailable" })).message).toBe("Service Unavailable");
+  });
+});
+
+describe("web page returned instead of API data", () => {
+  it("is rejected with an explanation instead of crashing components that expect JSON", async () => {
+    const { api } = await import("./api");
+    const adapter = async (config: unknown) => ({ data: "<!doctype html><html><body>app</body></html>", status: 200, statusText: "OK", headers: {}, config });
+    await expect(api.get("/categories", { adapter: adapter as never })).rejects.toThrow(/returned a web page instead of data/);
+    const ok = async (config: unknown) => ({ data: { categories: [] }, status: 200, statusText: "OK", headers: {}, config });
+    expect((await api.get("/categories", { adapter: ok as never })).data).toEqual({ categories: [] });
+  });
+});

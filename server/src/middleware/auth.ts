@@ -18,8 +18,9 @@ declare module "express-serve-static-core" {
 export const COOKIE = "token";
 export const cookieOptions = {
   httpOnly: true,
-  sameSite: "lax" as const,
-  secure: env.NODE_ENV === "production",
+  sameSite: env.COOKIE_SAMESITE,
+  // SameSite=None is only accepted by browsers together with Secure.
+  secure: env.NODE_ENV === "production" || env.COOKIE_SAMESITE === "none",
   maxAge: 7 * 24 * 60 * 60 * 1000,
   path: "/",
 };

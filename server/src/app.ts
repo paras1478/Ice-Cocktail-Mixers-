@@ -3,7 +3,8 @@ import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
-import { env } from "./lib/env.js";
+import { clientOrigins, env, trustProxy } from "./lib/env.js";
+import { prisma } from "./lib/db.js";
 import { authRouter } from "./routes/auth.js";
 import { addressRouter } from "./routes/addresses.js";
 import { productRouter, categoryRouter, searchRouter } from "./routes/catalog.js";
@@ -16,7 +17,14 @@ export function createApp() {
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
-  app.use(cors({ origin: env.CLIENT_ORIGIN, credentials: true }));
+  if (trustProxy) app.set("trust proxy", 1); // so per-IP rate limits see the real client IP behind Render/nginx
+  app.use(
+    cors({
+      // Requests without an Origin header (same-site, curl, health checks) are allowed; browsers must come from a listed origin.
+      origin: (origin, cb) => cb(null, !origin || clientOrigins.includes(origin)),
+      credentials: true,
+    }),
+  );
   app.use(express.json({ limit: "100kb" }));
   app.use(cookieParser());
   if (env.NODE_ENV !== "test") {
@@ -33,6 +41,20 @@ export function createApp() {
   }
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
+  // Readiness check that includes the database. Reports only an error CODE (never connection strings or secrets) so a failing deploy can be diagnosed from outside.
+  app.get("/api/health/db", async (_req, res) => {
+    try {
+      const categories = await prisma.category.count();
+      res.json({ ok: true, db: true, categories });
+    } catch (e) {
+      const code = (e as { code?: string }).code ?? (e as Error).name;
+      const hint =
+        code === "P2021" || code === "P2022" ? "The database is reachable but its tables are missing or outdated: run `npx prisma migrate deploy` against it."
+        : code === "PrismaClientInitializationError" || /^P100\d$/.test(code) ? "The database cannot be reached or rejected the login: check DATABASE_URL."
+        : "Database query failed: see the server logs.";
+      res.status(503).json({ ok: false, db: false, code, hint });
+    }
+  });
   app.use("/api/auth", authRouter);
   app.use("/api/addresses", addressRouter);
   app.use("/api/products", productRouter);

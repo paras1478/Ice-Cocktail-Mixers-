@@ -1,0 +1,1 @@
+{"currency":"INR","deliveryFeeMinor":2900,"freeDeliveryThresholdMinor":39900,"taxRateBps":1800,"payments":{"cod":true,"card":false},"location":{"pincodeLookup":true,"reverseGeocoding":true}}

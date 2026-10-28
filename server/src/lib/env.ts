@@ -1,10 +1,17 @@
 import "dotenv/config";
 import { z } from "zod";
+import { parseOrigins } from "./origins.js";
 
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
-  CLIENT_ORIGIN: z.string().url().default("http://localhost:5173"),
+  // Browser origin(s) allowed by CORS: one value or a comma-separated list, e.g. "https://app.vercel.app,https://staging.vercel.app".
+  CLIENT_ORIGIN: z.string().min(1).default("http://localhost:5173"),
+  // "lax" when the site and API share a domain (or the API is reached through a /api rewrite). "none" when the frontend and the API are on
+  // different sites (e.g. vercel.app + onrender.com) so the login cookie is sent with cross-site requests; "none" is HTTPS-only.
+  COOKIE_SAMESITE: z.enum(["lax", "strict", "none"]).default("lax"),
+  // Behind a reverse proxy / PaaS (Render, Fly, nginx) the real client IP and HTTPS come from X-Forwarded-* headers. Defaults to on in production.
+  TRUST_PROXY: z.enum(["true", "false"]).optional(),
   PORT: z.coerce.number().default(4000),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   STRIPE_SECRET_KEY: z.string().optional(),
@@ -28,4 +35,13 @@ if (!parsed.success) {
   process.exit(1);
 }
 export const env = parsed.data;
+export const clientOrigins = (() => {
+  try {
+    return parseOrigins(env.CLIENT_ORIGIN);
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  }
+})();
+export const trustProxy = env.TRUST_PROXY ? env.TRUST_PROXY === "true" : env.NODE_ENV === "production";
 export const allowSamplePrices = env.ALLOW_SAMPLE_PRICES ? env.ALLOW_SAMPLE_PRICES === "true" : env.NODE_ENV !== "production";

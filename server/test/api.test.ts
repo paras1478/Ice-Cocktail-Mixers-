@@ -516,3 +516,29 @@ describe("admin dashboard data", () => {
     expect((await admin.post("/api/admin/discounts").send({ code: "party5", type: "PERCENT", value: 5 }).expect(201)).body.discount.code).toBe("PARTY5");
   });
 });
+
+describe("CORS and deployment health", () => {
+  it("parses CLIENT_ORIGIN: trailing slash, paths, lists and spaces are tolerated; garbage is rejected", async () => {
+    const { parseOrigins } = await import("../src/lib/origins.js");
+    expect(parseOrigins("https://ice-cocktail-beta.vercel.app/")).toEqual(["https://ice-cocktail-beta.vercel.app"]); // the deployed value had a trailing slash
+    expect(parseOrigins("https://a.vercel.app/path/x")).toEqual(["https://a.vercel.app"]);
+    expect(parseOrigins(" https://a.vercel.app , http://localhost:5173/ ,https://a.vercel.app")).toEqual(["https://a.vercel.app", "http://localhost:5173"]);
+    expect(parseOrigins("")).toEqual([]);
+    expect(() => parseOrigins("not a url")).toThrow(/invalid URL/);
+  });
+  it("allows the configured origin (exact match, with credentials) and not others", async () => {
+    const ok = await request(app).options("/api/categories").set("Origin", "http://localhost:5173").set("Access-Control-Request-Method", "GET").expect(204);
+    expect(ok.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+    expect(ok.headers["access-control-allow-credentials"]).toBe("true");
+    const other = await request(app).options("/api/categories").set("Origin", "https://evil.example").set("Access-Control-Request-Method", "GET");
+    expect(other.headers["access-control-allow-origin"]).toBeUndefined();
+    const plain = await request(app).get("/api/health").expect(200); // no Origin header: still served
+    expect(plain.body).toEqual({ ok: true });
+  });
+  it("reports database readiness without leaking secrets", async () => {
+    const r = await request(app).get("/api/health/db").expect(200);
+    expect(r.body).toMatchObject({ ok: true, db: true });
+    expect(typeof r.body.categories).toBe("number");
+    expect(JSON.stringify(r.body)).not.toMatch(/postgres|password|DATABASE_URL/i);
+  });
+});

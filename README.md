@@ -85,8 +85,8 @@ Auth `register|login|logout|me`; Products `GET /products` (`q, category, minPric
 ## Tests
 
 ```bash
-cd server && npm test     # 76 tests: auth, catalog scope, search/filter/sort, admin product CRUD, quotes, cart, PIN lookup + serviceability (fetch mocked), addresses, orders (concurrency, stock, snapshot, scope), admin
-cd client && npm test     # 70 tests: cart/filter/PIN/format/api helpers, product card, layout (admin banner rules), PIN modal with the real provider, address form (PIN lookup, multiple post offices, races, failures, GPS)
+cd server && npm test     # 79 tests: auth, catalog scope, search/filter/sort, admin product CRUD, quotes, cart, PIN lookup + serviceability (fetch mocked), addresses, orders (concurrency, stock, snapshot, scope), admin
+cd client && npm test     # 76 tests: cart/filter/PIN/format/api helpers, product card, layout (admin banner rules), PIN modal with the real provider, address form (PIN lookup, multiple post offices, races, failures, GPS)
 ```
 
 Server tests need the `icemixers_ci` database migrated (`DATABASE_URL=… npx prisma migrate deploy`); **they truncate it**. Override with `TEST_DATABASE_URL`.
@@ -100,3 +100,64 @@ Server tests need the `icemixers_ci` database migrated (`DATABASE_URL=… npx pr
 Replace sample prices/coverage/policy pages; add licensed product photos; configure online payments (not implemented); set a real `GEOCODER_USER_AGENT`; change the seeded admin password.
 #   I c e - C o c k t a i l - M i x e r s -  
  
+## Deployment: Vercel (frontend) + Render (backend)
+
+Folders: `client/` is the frontend (React + Vite), `server/` is the backend (Express + Prisma + PostgreSQL).
+
+### Backend on Render (Web Service)
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `server` |
+| Build Command | `npm install --include=dev && npx prisma generate && npm run build && npx prisma migrate deploy` |
+| Start Command | `npm start` |
+| Health Check Path | `/api/health` |
+
+Environment variables (Render dashboard → Environment):
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | your Render PostgreSQL connection string (use the *Internal* URL) |
+| `JWT_SECRET` | a random string of 32+ characters |
+| `NODE_ENV` | `production` |
+| `CLIENT_ORIGIN` | `https://ice-cocktail-beta.vercel.app` (comma-separate several origins; a trailing slash is tolerated) |
+| `ALLOW_SAMPLE_PRICES` | `true` while the catalogue still has sample prices. **Without it, production hides every product with an unverified price, so the shop looks empty.** |
+| `COOKIE_SAMESITE` | `none` **only** if the browser calls the API directly (see Vercel option 2); leave unset for option 1 |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | the admin you want created by the seed |
+
+Create the data **once**: open the Render **Shell** for the service and run `npm run db:seed` (it creates categories, products, bundles, sample delivery areas, discount codes and the admin). **Do not re-run it on a live shop:** it resets products, bundles, delivery areas and discount codes to the values in `server/prisma/catalog.ts` (so edits made in Admin, such as stock and prices, would be overwritten). Customers, addresses, carts and orders are never touched by the seed. `migrate deploy` only creates or updates tables: it never resets or deletes data.
+
+Database: the app uses **PostgreSQL** (Prisma). On Render create a *PostgreSQL* instance in the same region as the web service and paste its **Internal Database URL** into `DATABASE_URL` (an external URL needs `?sslmode=require`). The app does not use MongoDB; do not set `MONGODB_URI`.
+
+Verify the backend from any browser or terminal:
+
+- `https://ice-cocktail-mixers.onrender.com/api/health` → `{"ok":true}` (server is up)
+- `https://ice-cocktail-mixers.onrender.com/api/health/db` → `{"ok":true,"db":true,"categories":8}`. If it returns 503 it names the cause without exposing secrets: `P2021` = tables missing (run `npx prisma migrate deploy`), `PrismaClientInitializationError`/`P1001` = wrong or unreachable `DATABASE_URL`.
+- `https://ice-cocktail-mixers.onrender.com/api/categories` → the 8 categories (the bare base URL `/` is not an endpoint and returns 404 by design; every route lives under `/api`).
+
+The free Render plan sleeps when idle: the first request can take 30-60 s (the app waits up to 45 s and offers Retry).
+
+### Frontend on Vercel
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `client` |
+| Framework Preset | Vite |
+| Build Command | `npm run build` |
+| Output Directory | `dist` |
+
+`client/vercel.json` provides (1) the single-page-app fallback so deep links such as `/category/tonic-water` do not 404, and (2) a rewrite of `/api/*` to the Render backend.
+
+Choose **one** way to reach the API:
+
+1. **Recommended: rewrite (same-origin).** Leave `VITE_API_URL` **unset**. The browser calls `https://ice-cocktail-beta.vercel.app/api/...`, Vercel forwards it to Render. No CORS, and the login cookie stays `SameSite=Lax`. If your backend URL ever changes, edit the destination in `client/vercel.json`.
+2. **Direct calls.** Set `VITE_API_URL=https://ice-cocktail-mixers.onrender.com` (Production; the `/api` suffix is added automatically). Then the backend **must** have `CLIENT_ORIGIN=https://ice-cocktail-beta.vercel.app` and `COOKIE_SAMESITE=none`. Some browsers block third-party cookies, which can break login in this mode: option 1 avoids that.
+
+`VITE_` variables are baked into the bundle **at build time** and are public: never put secrets in them. **After adding, changing or removing a `VITE_` variable you must redeploy** (Vercel → Deployments → ⋯ → Redeploy, untick "Use existing build cache"). Pushing the code changes triggers a deployment too, and the backend must be redeployed for the CORS/cookie fixes to take effect.
+
+### What was wrong on the first deployment
+
+- The frontend was built with no `VITE_API_URL`, so it called Vercel's own `/api/*` (404 on every request).
+- Vercel answers such requests with `{"error":{"code","message"}}`; the error handler assumed `error` was always text, so React received an object and crashed ("Minified React error #31"), which showed *Something went wrong displaying this page*. It now accepts any response shape and shows a readable message with Retry.
+- Deep links returned 404 (no SPA fallback), and `CLIENT_ORIGIN` had a trailing slash, which never matches a browser's `Origin` header, so CORS would have blocked every call even with the URL fixed.
+- The Render database endpoints returned HTTP 500; use `/api/health/db` (above) to see why. The most likely causes are tables not created or an unseeded database; the second is the production sample-price rule (`ALLOW_SAMPLE_PRICES`).
