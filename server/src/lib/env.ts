@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { z } from "zod";
 import { allowedOrigins, parseOrigins } from "./origins.js";
+import { productionDbUrlProblem } from "./dbUrl.js";
 
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
@@ -39,6 +40,14 @@ if (!parsed.success) {
   process.exit(1);
 }
 export const env = parsed.data;
+if (env.NODE_ENV === "production") {
+  // Never fall back to (or start with) a local database in production; the message contains no credentials.
+  const problem = productionDbUrlProblem(process.env.DATABASE_URL);
+  if (problem) {
+    console.error("Invalid environment configuration:", problem);
+    process.exit(1);
+  }
+}
 export const clientOrigins = (() => {
   try {
     return allowedOrigins(parseOrigins(env.CLIENT_ORIGIN), env.NODE_ENV);
