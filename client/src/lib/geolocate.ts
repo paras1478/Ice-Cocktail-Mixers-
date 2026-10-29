@@ -44,6 +44,7 @@ export async function currentFix(): Promise<Fix> {
     pos = await ask({ enableHighAccuracy: false, timeout: 20_000, maximumAge: 0 }); // never a cached position
   }
   const { latitude, longitude, accuracy } = pos.coords;
+  if (import.meta.env?.DEV) console.info("[geolocation] browser returned", { latitude, longitude, accuracy, timestamp: new Date(pos.timestamp || Date.now()).toISOString() });
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) throw new GeoError("unavailable");
   return { latitude: Number(latitude.toFixed(6)), longitude: Number(longitude.toFixed(6)), accuracy: Number.isFinite(accuracy) ? Math.round(accuracy) : null };
 }

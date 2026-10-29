@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 // Leaflet needs a real browser layout; the map is covered by the geolocation tests and the manual checks.
-vi.mock("./LocationMap", () => ({ default: ({ latitude, longitude }: { latitude: number; longitude: number }) => <div data-testid="location-map" data-lat={latitude} data-lng={longitude} /> }));
+vi.mock("./LocationMap", () => ({
+  default: ({ latitude, longitude, onMove }: { latitude: number | null; longitude: number | null; onMove?: (lat: number, lng: number) => void }) => (
+    <div data-testid="location-map" data-lat={latitude ?? ""} data-lng={longitude ?? ""}>
+      {onMove && <button type="button" onClick={() => onMove(28.4595, 77.0266)}>mock-tap-map</button>}
+    </div>
+  ),
+}));
 import { AddressForm, emptyAddress, validateAddress, type AddressDraft } from "./AddressForm";
 
 const get = vi.fn();
@@ -280,3 +286,56 @@ describe("rough (network / IP based) location", () => {
   });
 });
 
+describe("choosing the delivery spot manually (never a hardcoded location)", () => {
+  const patnaFix = () => Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: (ok: (p: unknown) => void) => ok({ coords: { latitude: 25.609, longitude: 85.1343, accuracy: 200000 } }) } });
+
+  it("after a rough fix, tapping the map sets the pin, the address is looked up for the TAPPED coordinates, and Use this address saves exactly those", async () => {
+    patnaFix();
+    get.mockResolvedValue({ data: { pincode: "122001", postal: { status: "not_found" }, delivery: { serviceable: false, pincode: "122001", reason: "not_covered" } } });
+    post.mockReset();
+    post.mockResolvedValue({ data: { line1: "7 Golf Course Road", area: "Sector 42", district: "Gurgaon", city: "Gurgaon", state: "Haryana", pincode: "122002" } });
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: /current location/i }));
+    await screen.findByTestId("gps-found");
+    expect(post).not.toHaveBeenCalled(); // no address is looked up for the rough city-level position
+    expect(screen.getByTestId("gps-coords")).toHaveTextContent("accuracy ±200 km");
+    fireEvent.click(screen.getByRole("button", { name: "mock-tap-map" })); // the customer taps their real spot
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/geo/reverse", { latitude: 28.4595, longitude: 77.0266 })); // the new coordinates, not 25.609 / 85.1343
+    expect(screen.getByTestId("gps-coords")).toHaveTextContent("Latitude 28.4595, longitude 77.0266");
+    expect(screen.getByTestId("location-map")).toHaveAttribute("data-lat", "28.4595");
+    fireEvent.click(await screen.findByRole("button", { name: "Use this address" }));
+    await waitFor(() => expect(state_()).toMatchObject({ latitude: 28.4595, longitude: 77.0266, line1: "7 Golf Course Road, Sector 42", area: "Sector 42", district: "Gurgaon", state: "Haryana", pincode: "122002" }));
+  });
+
+  it("Use this address replaces an older address with the one found at the selected pin, keeping house number and phone", async () => {
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: (ok: (p: unknown) => void) => ok({ coords: { latitude: 28.43, longitude: 77.1, accuracy: 15 } }) } });
+    get.mockResolvedValue({ data: { pincode: "400001", postal: { status: "not_found" }, delivery: { serviceable: false, pincode: "400001", reason: "not_covered" } } });
+    post.mockReset();
+    post.mockResolvedValue({ data: { line1: "7 Golf Course Road", area: "Sector 42", district: "Gurgaon", city: "Gurgaon", state: "Haryana", pincode: "122002" } });
+    render(<Harness initial={{ ...emptyAddress, house: "12B", phone: "9876543210", line1: "Old Street", area: "Old Area", district: "Mumbai", state: "Maharashtra", pincode: "400001" }} />);
+    fireEvent.click(screen.getByRole("button", { name: /current location/i }));
+    await screen.findByTestId("gps-found");
+    fireEvent.click(await screen.findByRole("button", { name: "Use this address" }));
+    await waitFor(() => expect(state_().pincode).toBe("122002"));
+    expect(state_()).toMatchObject({ house: "12B", phone: "9876543210", line1: "7 Golf Course Road, Sector 42", district: "Gurgaon", state: "Haryana", latitude: 28.43, longitude: 77.1 });
+  });
+
+  it("Choose on map shows a plain map view (not a location), makes no geolocation request, and uses the tapped spot", async () => {
+    const getCurrentPosition = vi.fn();
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition } });
+    get.mockResolvedValue({ data: { pincode: "122002", postal: { status: "not_found" }, delivery: { serviceable: false, pincode: "122002", reason: "not_covered" } } });
+    post.mockReset();
+    post.mockResolvedValue({ data: { line1: "7 Golf Course Road", area: "Sector 42", district: "Gurgaon", city: "Gurgaon", state: "Haryana", pincode: "122002" } });
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "Choose on map" }));
+    const pick = screen.getByTestId("pick-map");
+    expect(pick).toHaveTextContent(/not your location/);
+    expect(pick.querySelector("[data-testid=location-map]")).toHaveAttribute("data-lat", ""); // no pin and no coordinates until the customer chooses
+    expect(state_().latitude).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "mock-tap-map" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/geo/reverse", { latitude: 28.4595, longitude: 77.0266 }));
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Use pin only" }));
+    await waitFor(() => expect(state_()).toMatchObject({ latitude: 28.4595, longitude: 77.0266 }));
+  });
+});

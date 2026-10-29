@@ -62,6 +62,7 @@ interface Detected { latitude: number; longitude: number; accuracy?: number | nu
 export function AddressForm({ value, errors, onChange }: { value: AddressDraft; errors: Record<string, string>; onChange: (patch: Partial<AddressDraft>) => void }) {
   const lookup = usePincodeLookup(value.pincode);
   const [gps, setGps] = useState<{ busy: boolean; error: string | null; found: Detected | null }>({ busy: false, error: null, found: null });
+  const [picking, setPicking] = useState(false); // "Choose on map": a plain map view until the customer taps a spot
   const latest = useRef(value);
   latest.current = value;
   // What we last filled in automatically, so a new PIN may replace those values but never the customer's own edits.
@@ -101,7 +102,7 @@ export function AddressForm({ value, errors, onChange }: { value: AddressDraft; 
     }
     if (isCoarse(accuracy)) {
       // A city-level guess is not an address: looking it up would just name a landmark near the city centre, so no address is suggested.
-      if (id === seq.current) setGps({ busy: false, error: null, found: { latitude, longitude, accuracy, coarse: true, note: "We can't suggest an address from such a rough position. Drag the pin to your delivery spot and the address will be looked up for that spot." } });
+      if (id === seq.current) setGps({ busy: false, error: null, found: { latitude, longitude, accuracy, coarse: true, note: "We can't suggest an address from such a rough position. Tap the map (or drag the pin) to set your delivery spot and the address will be looked up for that spot." } });
       return;
     }
     try {
@@ -112,6 +113,7 @@ export function AddressForm({ value, errors, onChange }: { value: AddressDraft; 
     }
   };
   const locate = async () => {
+    setPicking(false);
     const id = ++seq.current;
     setGps({ busy: true, error: null, found: null });
     try {
@@ -134,8 +136,9 @@ export function AddressForm({ value, errors, onChange }: { value: AddressDraft; 
     onChange({
       latitude: d.latitude, longitude: d.longitude,
       ...(withAddress && a ? {
-        line1: cur.line1 || [a.line1, a.area].filter(Boolean).join(", "),
-        area: cur.area || a.area || "", district: cur.district || a.district || a.city || "", state: cur.state || a.state || "", pincode: cur.pincode || a.pincode || "",
+        // The customer asked to use what was found at the selected pin, so it replaces the older location text (house, landmark and phone are kept).
+        line1: [a.line1, a.area].filter(Boolean).join(", ") || cur.line1,
+        area: a.area || cur.area, district: a.district || a.city || cur.district, state: a.state || cur.state, pincode: a.pincode || cur.pincode,
       } : {}),
     });
     setGps({ busy: false, error: null, found: null });
@@ -152,15 +155,27 @@ export function AddressForm({ value, errors, onChange }: { value: AddressDraft; 
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-band p-3">
-        <button type="button" className="btn-ghost w-full sm:w-auto" onClick={locate} disabled={gps.busy}><Crosshair className="h-4 w-4" aria-hidden />{gps.busy ? "Locating…" : "Use my current location"}</button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button type="button" className="btn-ghost w-full sm:w-auto" onClick={locate} disabled={gps.busy}><Crosshair className="h-4 w-4" aria-hidden />{gps.busy ? "Locating…" : "Use my current location"}</button>
+          <button type="button" className="btn-ghost w-full sm:w-auto" onClick={() => { setGps({ busy: false, error: null, found: null }); setPicking(true); }} aria-expanded={picking}><MapPin className="h-4 w-4" aria-hidden />Choose on map</button>
+        </div>
+        {picking && !gps.found && (
+          <div className="mt-3" data-testid="pick-map">
+            <Suspense fallback={<MapFallback />}>
+              <LocationMap latitude={null} longitude={null} view={{ latitude: 22.5, longitude: 79, zoom: 4 }} onMove={(la, lo) => { setPicking(false); moveFound(la, lo); }} label="Map of India. Tap your delivery spot to place the pin." />
+            </Suspense>
+            <p className="mt-1 text-xs text-muted">This is only a plain map view of India, not your location. Zoom in and tap your delivery spot to place the pin.</p>
+            <button type="button" className="mt-1 text-xs font-semibold underline" onClick={() => setPicking(false)}>Cancel</button>
+          </div>
+        )}
         <p className="mt-1.5 text-xs text-muted">Optional. Your browser will ask for permission; we only use your position to help fill this address and we never track you.</p>
         {gps.error && <p role="alert" className="mt-2 text-xs font-semibold text-warn">{gps.error}</p>}
         {gps.found && (
           <div className="mt-3 rounded-lg border border-line bg-surface p-3 text-sm" data-testid="gps-found">
             {gps.found.address ? <p><b>Detected:</b> {[gps.found.address.line1, gps.found.address.area, gps.found.address.district ?? gps.found.address.city, gps.found.address.state, gps.found.address.pincode].filter(Boolean).join(", ")}</p>
               : <p className="text-warn">{gps.found.note}</p>}
-            {!gps.found.outside && <div className="mt-3"><Suspense fallback={<MapFallback />}><LocationMap latitude={gps.found.latitude} longitude={gps.found.longitude} accuracy={gps.found.accuracy} onMove={moveFound} label="Your detected location. Drag the pin to adjust it." /></Suspense></div>}
-            <p className="mt-1 text-xs text-muted" data-testid="gps-coords">Latitude {gps.found.latitude}, longitude {gps.found.longitude} · accuracy {describeAccuracy(gps.found.accuracy ?? null)}{!gps.found.outside && " · drag the pin to adjust it"}</p>
+            {!gps.found.outside && <div className="mt-3"><Suspense fallback={<MapFallback />}><LocationMap latitude={gps.found.latitude} longitude={gps.found.longitude} accuracy={gps.found.accuracy} onMove={moveFound} label="Selected location. Click the map or drag the pin to adjust it." /></Suspense></div>}
+            <p className="mt-1 text-xs text-muted" data-testid="gps-coords">Latitude {gps.found.latitude}, longitude {gps.found.longitude} · accuracy {describeAccuracy(gps.found.accuracy ?? null)}{!gps.found.outside && " · click the map or drag the pin to adjust it"}</p>
             {accuracyNote(gps.found.accuracy ?? null) && <p className="mt-1 text-xs font-semibold text-warn">{accuracyNote(gps.found.accuracy ?? null)}</p>}
             <div className="mt-2 flex flex-wrap gap-2">
               {gps.found.address && <button type="button" className="btn-add-solid" onClick={() => useDetected(gps.found!, true)}>Use this address</button>}
