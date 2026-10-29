@@ -32,7 +32,12 @@ export function DiscountBox() {
         <input id="code" className="input uppercase" value={val} onChange={(e) => setVal(e.target.value)} placeholder="Enter code" autoComplete="off" />
         <button className="btn-ghost shrink-0">Apply</button>
       </div>
-      {cart.code && cart.quote?.discountMessage && <p role="alert" className="mt-1.5 text-xs font-medium text-danger">{cart.quote.discountMessage}</p>}
+      {cart.code && cart.quote?.discountMessage && (
+        <p role="status" className="mt-1.5 text-xs font-medium text-warn" data-testid="coupon-notice">
+          {cart.quote.discountMessage === "Invalid discount code" ? "Invalid coupon." : `${cart.quote.discountMessage}.`} No discount is applied, and you can continue without one. Try another code or
+          <button type="button" className="ml-1 underline" onClick={() => { setVal(""); cart.applyCode(""); }}>remove this code</button>.
+        </p>
+      )}
       {cart.code && cart.quote?.discountCode && (
         <p className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-ok"><Tag className="h-3.5 w-3.5" aria-hidden /> {cart.quote.discountCode} applied
           <button type="button" className="ml-1 underline" onClick={() => { setVal(""); cart.applyCode(""); }}>Remove</button></p>

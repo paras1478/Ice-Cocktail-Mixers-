@@ -16,6 +16,9 @@ import { DiscountBox } from "./CartPage";
 
 const STEPS = ["Contact", "Address", "Review & pay"];
 
+/** One key per order attempt: repeating the same attempt (double click, lost response, retry) can never create a second order. */
+const newRequestId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+
 const toDraft = (a: Address): AddressDraft => draftFromRecord(a);
 const IGNORED: (keyof AddressDraft)[] = ["phone", "stateCode"];
 const sameDraft = (a: AddressDraft, b: AddressDraft) => (Object.keys(a) as (keyof AddressDraft)[]).every((k) => IGNORED.includes(k) || a[k] === b[k]);
@@ -44,6 +47,7 @@ export default function Checkout() {
   const [payBusy, setPayBusy] = useState(false);
   const [payError, setPayError] = useState<{ message: string; kind: "cancelled" | "failed" | "error" } | null>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
+  const attempt = useRef<{ id: string; sig: string } | null>(null);
   const inFlight = useRef(false); // blocks a second click / double submit while an order or payment is being processed
 
   // Start from the default saved address (or the header PIN) once they are known. This runs once and never after the
@@ -131,8 +135,11 @@ export default function Checkout() {
     setServerError(null);
     inFlight.current = true;
     try {
-      const r = await api.post<{ order: Order }>("/orders", {
-        items: cart.items, code: cart.code || undefined,
+      // A coupon is optional. Only one the quote accepted is sent; an invalid, expired or ineligible code is left out, so it can never block the order
+      // (the customer sees a notice and pays the full amount). The server validates whatever it receives and calculates the total itself.
+      const appliedCode = cart.code && q.discountCode ? cart.code : undefined;
+      const payload = {
+        items: cart.items, code: appliedCode,
         contactName: contact.name.trim(), contactPhone: addr.phone,
         address: addressPayload(addr),
         addressId: selected && unchanged ? selected.id : undefined,
@@ -141,7 +148,11 @@ export default function Checkout() {
         instructions: contact.instructions.trim() || undefined,
         paymentMethod: payment,
         expectedTotalMinor: q.totals.totalMinor, // the server refuses if prices changed since this total was shown
-      });
+      };
+      // Same content = same key (a retry returns the order already created); changed content = a new key.
+      const sig = JSON.stringify(payload);
+      if (attempt.current?.sig !== sig) attempt.current = { id: newRequestId(), sig };
+      const r = await api.post<{ order: Order }>("/orders", { ...payload, requestId: attempt.current.id });
       if (payment === "ONLINE") {
         // The order is saved first (cart kept until the payment succeeds), then paid. A cancelled or failed payment retries this same order.
         setUnpaid(r.data.order); setPlacing(false); inFlight.current = false;

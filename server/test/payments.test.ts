@@ -112,6 +112,17 @@ describe("creating the online payment", () => {
     expect(gateway.created).toHaveLength(1); // no second gateway order for the same order
   });
 
+  it("an invalid coupon is ignored and Razorpay is asked for the full original amount", async () => {
+    mockRazorpay();
+    const a = await signedUp();
+    const o = (await a.post("/api/orders").send(body({ code: "FALT50" })).expect(201));
+    expect(o.body.couponMessage).toBe("Invalid discount code");
+    expect(o.body.order.discountMinor).toBe(0);
+    const g = (await a.post("/api/payments/razorpay/order").send({ orderId: o.body.order.id }).expect(200)).body;
+    expect(g.amountMinor).toBe(o.body.order.totalMinor);
+    expect(gateway.created.at(-1)!.amount).toBe(2 * 6000 + 2900 + Math.round((2 * 6000 * 1800) / 10000)); // subtotal + delivery + tax, no discount
+  });
+
   it("never exposes or creates payments for someone else's order, and rejects cash-on-delivery orders", async () => {
     mockRazorpay();
     const owner = await signedUp();

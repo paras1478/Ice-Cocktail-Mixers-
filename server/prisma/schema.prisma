@@ -253,6 +253,9 @@ model Order {
   cancelledAt   DateTime?
   cancelReason  String?
   cancelledBy   String? // CUSTOMER or ADMIN
+  // Idempotency key sent by the checkout page: the same key can never create a second order for the same customer.
+  clientRequestId String?
+  @@unique([userId, clientRequestId])
 }
 
 model OrderItem {

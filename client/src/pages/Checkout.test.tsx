@@ -57,7 +57,7 @@ beforeEach(() => {
   } as never;
   routes.get = { "/config": { currency: "INR", payments: { cod: true, card: false, online: true } }, "/addresses": { addresses: [savedAddress] }, "/pincode/*": { pincode: "122018", postal: { status: "not_found" }, delivery: { serviceable: true, pincode: "122018", areaName: "Sector 54", city: "Gurgaon", state: "Haryana", etaMinutes: 14, isSample: false } } };
   routes.post = { "/addresses/validate": { serviceable: true, pincode: "122018", areaName: "Sector 54", city: "Gurgaon", state: "Haryana", etaMinutes: 14, isSample: false } };
-  cart.quote = quote; cart.quoteError = null; cart.clear.mockClear();
+  cart.quote = quote; cart.quoteError = null; cart.code = ""; cart.clear.mockClear(); cart.applyCode.mockClear();
 });
 
 const posts = (url: string) => calls.filter((c) => c.method === "post" && c.url === url);
@@ -218,5 +218,92 @@ describe("checkout: cash on delivery and missing configuration", () => {
     confirmAddress();
     fireEvent.click(screen.getByRole("button", { name: /Place order/ }));
     expect(await screen.findByRole("heading", { name: "Order placed" })).toBeInTheDocument();
+  });
+});
+
+describe("checkout: discount coupons are optional", () => {
+  const invalid: Quote = { ...quote, discountMessage: "Invalid discount code" };
+  const orderBody = () => posts("/orders")[0].body as Record<string, unknown>;
+
+  it("with an invalid coupon: no discount, a non-blocking notice, and the order is sent without the code at the original total (COD)", async () => {
+    cart.code = "FALT50"; cart.quote = invalid;
+    routes.post["/orders"] = { order: placedOrder("COD"), couponMessage: null };
+    await toReview();
+    const notice = screen.getByTestId("coupon-notice");
+    expect(notice).toHaveTextContent("Invalid coupon.");
+    expect(notice).toHaveTextContent(/continue without one/);
+    expect(screen.getByTestId("grand-total")).toHaveTextContent("₹141.6"); // original total, nothing discounted
+    fireEvent.click(screen.getByTestId("pay-COD"));
+    confirmAddress();
+    const button = screen.getByRole("button", { name: /Place order/ });
+    expect(button).toBeEnabled(); // an invalid coupon never blocks the button
+    fireEvent.click(button);
+    expect(await screen.findByRole("heading", { name: "Order placed" })).toBeInTheDocument();
+    expect(orderBody().code).toBeUndefined(); // the bad code is not sent
+    expect(orderBody()).toMatchObject({ expectedTotalMinor: 14160, paymentMethod: "COD" });
+    expect(opened).toHaveLength(0);
+  });
+
+  it("with an invalid coupon: Pay securely proceeds to Razorpay for the full original amount", async () => {
+    cart.code = "FALT50"; cart.quote = invalid;
+    routes.post["/orders"] = { order: placedOrder("ONLINE"), couponMessage: null };
+    routes.post["/payments/razorpay/order"] = gatewayOrder;
+    await toReview();
+    fireEvent.click(screen.getByTestId("pay-UPI"));
+    confirmAddress();
+    fireEvent.click(screen.getByRole("button", { name: /Pay securely/ }));
+    await waitFor(() => expect(opened).toHaveLength(1));
+    expect(orderBody().code).toBeUndefined();
+    expect(orderBody()).toMatchObject({ expectedTotalMinor: 14160, paymentMethod: "ONLINE" });
+    expect(opened[0]).toMatchObject({ amount: 14160, currency: "INR", order_id: "order_ABC" });
+  });
+
+  it("with a valid coupon: the code and the discounted total are sent", async () => {
+    cart.code = "SAVE10";
+    cart.quote = { ...quote, discountCode: "SAVE10", totals: { ...quote.totals, discountMinor: 1200, taxMinor: 1944, totalMinor: 12744 } };
+    routes.post["/orders"] = { order: { ...placedOrder("COD"), discountMinor: 1200, totalMinor: 12744 }, couponMessage: null };
+    await toReview();
+    expect(screen.queryByTestId("coupon-notice")).toBeNull();
+    fireEvent.click(screen.getByTestId("pay-COD"));
+    confirmAddress();
+    fireEvent.click(screen.getByRole("button", { name: /Place order/ }));
+    await screen.findByRole("heading", { name: "Order placed" });
+    expect(orderBody()).toMatchObject({ code: "SAVE10", expectedTotalMinor: 12744 });
+  });
+
+  it("with no coupon at all: no code is sent", async () => {
+    routes.post["/orders"] = { order: placedOrder("COD"), couponMessage: null };
+    await toReview();
+    expect(screen.queryByTestId("coupon-notice")).toBeNull();
+    fireEvent.click(screen.getByTestId("pay-COD"));
+    confirmAddress();
+    fireEvent.click(screen.getByRole("button", { name: /Place order/ }));
+    await screen.findByRole("heading", { name: "Order placed" });
+    expect(orderBody().code).toBeUndefined();
+  });
+
+  it("the customer can remove the invalid code", async () => {
+    cart.code = "FALT50"; cart.quote = invalid;
+    await toReview();
+    fireEvent.click(screen.getByRole("button", { name: "remove this code" }));
+    expect(cart.applyCode).toHaveBeenCalledWith("");
+  });
+});
+
+describe("checkout: no duplicate orders", () => {
+  it("a retry of the same checkout reuses the same request id (so a lost response cannot create a second order)", async () => {
+    let n = 0;
+    routes.post["/orders"] = () => (++n === 1 ? Object.assign(new Error("Network Error"), { response: undefined }) : { order: placedOrder("COD"), couponMessage: null });
+    await toReview();
+    fireEvent.click(screen.getByTestId("pay-COD"));
+    confirmAddress();
+    fireEvent.click(screen.getByRole("button", { name: /Place order/ }));
+    expect(await screen.findByTestId("checkout-error")).toHaveTextContent("Network Error");
+    fireEvent.click(screen.getByRole("button", { name: /Place order/ }));
+    await screen.findByRole("heading", { name: "Order placed" });
+    const ids = posts("/orders").map((c) => (c.body as { requestId: string }).requestId);
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).toBeTruthy();
+    expect(ids[1]).toBe(ids[0]);
   });
 });

@@ -59,10 +59,10 @@ export async function buildQuote(tx: Prisma.TransactionClient, items: RequestIte
     const d = await tx.discount.findUnique({ where: { code: code.trim().toUpperCase() } });
     rule = d;
     discountMessage = discountError(rule, subtotal);
-    if (discountMessage) {
-      if (strict) throw new HttpError(400, discountMessage);
-      rule = null;
-    } else if (d) discountId = d.id;
+    // The coupon is optional: one that is invalid, expired, fully redeemed or not eligible is IGNORED (no discount, original totals) and the
+    // reason is returned so the customer can be told. It is never applied, and no other discount is substituted for it.
+    if (discountMessage) rule = null;
+    else if (d) discountId = d.id;
   }
   const totals = computeTotals(lines, rule, pricingConfig);
   return { lines, issues, totals, discountId, discountCode: rule?.code ?? null, discountMessage };
