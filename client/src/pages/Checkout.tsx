@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { CheckCircle2, MapPin } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Lock, MapPin, XCircle } from "lucide-react";
 import { api, apiError } from "../lib/api";
+import { payForOrder, PaymentNotCompleted, type OnlineMethod } from "../lib/payOnline";
 import type { Address, AppConfig, Delivery, Order } from "../lib/types";
 import { formatAddress, formatMoney, formatTime } from "../lib/format";
 import { useAuth } from "../context/AuthContext";
@@ -9,7 +10,9 @@ import { useCart } from "../context/CartContext";
 import { useLocationCtx } from "../context/LocationContext";
 import { ErrorState, FieldError, Spinner, useAsync } from "../components/ui";
 import { AddressForm, addressPayload, draftFromRecord, emptyAddress, validateAddress, type AddressDraft } from "../components/AddressForm";
-import { DiscountBox, OrderTotals } from "./CartPage";
+import { PaymentMethods, type PayChoice } from "../components/PaymentMethods";
+import { OrderSummary } from "../components/OrderSummary";
+import { DiscountBox } from "./CartPage";
 
 const STEPS = ["Contact", "Address", "Review & pay"];
 
@@ -31,11 +34,16 @@ export default function Checkout() {
   const [saveAddress, setSaveAddress] = useState(true);
   const [delivery, setDelivery] = useState<Delivery | null>(null);
   const [confirmed, setConfirmed] = useState(false);
-  const [payment, setPayment] = useState<"COD" | "CARD">("COD");
+  const [choice, setChoice] = useState<PayChoice>("COD");
   const [checking, setChecking] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [order, setOrder] = useState<Order | null>(null);
+  // Online payment: the order is saved first, then paid. If the payment is cancelled or fails the order stays here so the customer can retry (no second order).
+  const [unpaid, setUnpaid] = useState<Order | null>(null);
+  const [payBusy, setPayBusy] = useState(false);
+  const [payError, setPayError] = useState<{ message: string; kind: "cancelled" | "failed" | "error" } | null>(null);
+  const inFlight = useRef(false); // blocks a second click / double submit while an order or payment is being processed
 
   // Start from the default saved address (or the header PIN) once they are known. This runs once and never after the
   // customer has started typing, so a late-arriving list can not overwrite their input.
@@ -49,13 +57,36 @@ export default function Checkout() {
     else setAddr((a) => ({ ...a, phone: a.phone || (user?.phone ?? ""), pincode: a.pincode || (loc.pincode ?? "") }));
   }, [saved.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const pay = async (o: Order, how?: OnlineMethod) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setPayBusy(true);
+    setPayError(null);
+    try {
+      const paid = await payForOrder(o.id, how); // the server verified the payment before answering
+      cart.clear(); // only now, so a cancelled or failed payment never costs the customer their cart
+      setOrder(paid);
+      setUnpaid(null);
+    } catch (ex) {
+      if (ex instanceof PaymentNotCompleted) setPayError({ message: ex.message, kind: ex.kind });
+      else setPayError({ message: ex instanceof Error && !("response" in ex) ? ex.message : apiError(ex).message, kind: "error" });
+    } finally { setPayBusy(false); inFlight.current = false; }
+  };
+
   if (order) return <Success order={order} />;
+  if (unpaid) return <PayPanel order={unpaid} busy={payBusy} error={payError} onPay={() => pay(unpaid, onlineHow(choice))} onLater={() => cart.clear()} />;
   if (!cart.items.length) return <Navigate to="/cart" replace />;
 
   const q = cart.quote;
   const selected = saved.data?.find((a) => a.id === selectedId) ?? null;
   const unchanged = selected ? sameDraft(addr, toDraft(selected)) : false;
   const codOk = cfg.data?.payments.cod ?? true;
+  const onlineOk = cfg.data?.payments.online ?? false;
+  // An unavailable method is shown with the reason (never silently hidden); the customer is moved to one that works.
+  const available = (c: PayChoice) => (c === "COD" ? codOk : onlineOk);
+  const selectedChoice: PayChoice = available(choice) ? choice : (["UPI", "CARD", "NETBANKING", "COD"] as PayChoice[]).find(available) ?? choice;
+  const payment: "COD" | "ONLINE" = selectedChoice === "COD" ? "COD" : "ONLINE";
+  const onlineNote = cfg.error ? "We couldn't check online payment options. Please retry." : cfg.loading ? "Checking availability…" : "Online payment isn't set up for this store yet. Cash on delivery still works.";
 
   const next = async () => {
     setServerError(null);
@@ -86,10 +117,12 @@ export default function Checkout() {
   };
 
   const place = async () => {
+    if (inFlight.current) return;
     if (!q || q.issues.length) return setServerError("Some items in your cart need attention.");
     if (!confirmed) return setServerError("Please confirm that your delivery address is correct.");
     setPlacing(true);
     setServerError(null);
+    inFlight.current = true;
     try {
       const r = await api.post<{ order: Order }>("/orders", {
         items: cart.items, code: cart.code || undefined,
@@ -102,9 +135,17 @@ export default function Checkout() {
         paymentMethod: payment,
         expectedTotalMinor: q.totals.totalMinor, // the server refuses if prices changed since this total was shown
       });
+      if (payment === "ONLINE") {
+        // The order is saved first (cart kept until the payment succeeds), then paid. A cancelled or failed payment retries this same order.
+        setUnpaid(r.data.order); setPlacing(false); inFlight.current = false;
+        await pay(r.data.order, onlineHow(selectedChoice));
+        return;
+      }
       cart.clear();
+      inFlight.current = false;
       setOrder(r.data.order);
     } catch (ex) {
+      inFlight.current = false;
       const info = apiError(ex);
       setServerError(info.message);
       cart.refresh(); // pick up changed prices / stock
@@ -113,7 +154,7 @@ export default function Checkout() {
   };
 
   return (
-    <div className="container-x py-8">
+    <div className="container-x py-8 pb-32 lg:pb-8">
       <h1 className="text-3xl font-extrabold">Checkout</h1>
       <ol className="mt-4 flex gap-2 overflow-x-auto" aria-label="Checkout steps">
         {STEPS.map((s, i) => (
@@ -177,49 +218,78 @@ export default function Checkout() {
               </div>
               <label className="flex items-start gap-2 text-sm font-semibold"><input type="checkbox" className="mt-1" checked={confirmed} onChange={(e) => { setConfirmed(e.target.checked); if (e.target.checked) setServerError(null); }} /> I confirm this delivery address is correct.</label>
               <fieldset>
-                <legend className="label">Payment</legend>
-                {cfg.error && <ErrorState message={cfg.error} onRetry={cfg.reload} />}
-                <div className="space-y-2">
-                  <label className={`flex items-start gap-3 rounded-xl border p-3 text-sm ${payment === "COD" ? "border-accent bg-tint/60" : "border-line"} ${codOk ? "" : "opacity-50"}`}>
-                    <input type="radio" name="pay" className="mt-1" disabled={!codOk} checked={payment === "COD"} onChange={() => setPayment("COD")} /><span><b>Cash on delivery</b><br /><span className="text-muted">Pay when your order arrives.</span></span>
-                  </label>
-                  <label className="flex items-start gap-3 rounded-xl border border-line p-3 text-sm opacity-50">
-                    <input type="radio" name="pay" className="mt-1" disabled /><span><b>Card / UPI</b><br /><span className="text-muted">Online payment is not available yet.</span></span>
-                  </label>
-                </div>
+                <legend className="label">Payment method</legend>
+                {cfg.error && <div className="mb-3"><ErrorState message={cfg.error} onRetry={cfg.reload} /></div>}
+                <PaymentMethods value={selectedChoice} onChange={setChoice} codOk={codOk} onlineOk={onlineOk} onlineNote={onlineNote} />
+                <p className="mt-3 flex items-start gap-2 rounded-xl bg-band p-3 text-xs text-ink-soft" data-testid="pay-note">
+                  <Lock className="mt-0.5 h-4 w-4 shrink-0 text-ok" aria-hidden />
+                  {payment === "ONLINE"
+                    ? <span><b>Secure checkout.</b> You pay {q ? <b>{formatMoney(q.totals.totalMinor)}</b> : "the total"} in Razorpay's secure window. We never see or store your card, UPI or bank details. Your order is confirmed only after the payment succeeds.</span>
+                    : <span>You pay {q ? <b>{formatMoney(q.totals.totalMinor)}</b> : "the total"} in cash when your order arrives.</span>}
+                </p>
               </fieldset>
               <DiscountBox />
             </div>
           )}
 
           {serverError && <p role="alert" className="mt-4 rounded-xl bg-band p-3 text-sm font-semibold text-danger">{serverError}</p>}
-          <div className="mt-6 flex items-center justify-between gap-3">
-            {step > 0 ? <button className="btn-ghost" onClick={() => setStep(step - 1)}>Back</button> : <Link to="/cart" className="btn-ghost">Back to cart</Link>}
-            {step < 2 ? <button className="btn-primary" onClick={next} disabled={checking}>{checking ? "Checking delivery…" : "Continue"}</button>
-              : <button className="btn-add-solid px-8" onClick={place} disabled={placing || !q || q.issues.length > 0}>{placing ? "Placing order…" : `Place order${q ? ` · ${formatMoney(q.totals.totalMinor)}` : ""}`}</button>}
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 py-3 shadow-[0_-6px_20px_rgba(0,0,0,0.14)] backdrop-blur lg:static lg:z-auto lg:mt-6 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none" data-testid="checkout-actions">
+            <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 lg:max-w-none">
+              {step > 0 ? <button className="btn-ghost" onClick={() => setStep(step - 1)} disabled={placing}>Back</button> : <Link to="/cart" className="btn-ghost">Back to cart</Link>}
+              {q && <p className="text-right text-xs text-muted lg:hidden">Total<br /><b className="text-base text-ink">{formatMoney(q.totals.totalMinor)}</b></p>}
+              {step < 2 ? <button className="btn-primary" onClick={next} disabled={checking}>{checking ? "Checking delivery…" : "Continue"}</button>
+                : <button className="btn-add-solid px-6 sm:px-8" onClick={place} disabled={placing || !q || q.issues.length > 0}>
+                  {placing ? <span className="inline-flex items-center gap-2"><Spinner /> {payment === "ONLINE" ? "Preparing payment…" : "Placing order…"}</span>
+                    : <span className="inline-flex items-center gap-2">{payment === "ONLINE" && <Lock className="h-4 w-4" aria-hidden />}{payment === "ONLINE" ? "Pay securely" : "Place order"}{q ? ` · ${formatMoney(q.totals.totalMinor)}` : ""}</span>}
+                </button>}
+            </div>
           </div>
         </div>
 
-        <aside className="card h-fit p-5 lg:sticky lg:top-28" aria-label="Order summary">
-          <h2 className="mb-4 text-lg font-extrabold">Order summary</h2>
-          {q ? <><ul className="mb-4 space-y-1.5 text-sm">{q.lines.map((l) => <li key={l.productId} className="flex justify-between gap-3"><span>{l.quantity} × {l.name}</span><span className="font-semibold">{formatMoney(l.unitMinor * l.quantity)}</span></li>)}</ul><OrderTotals quote={q} />
-            {q.issues.map((i) => <p key={i.productId} role="alert" className="mt-2 text-xs font-semibold text-danger">{i.message}</p>)}</> : <Spinner />}
-        </aside>
+        <OrderSummary quote={q ?? null} payable={step === 2} />
       </div>
     </div>
   );
 }
 
+const onlineHow = (c: PayChoice): OnlineMethod | undefined => (c === "UPI" || c === "CARD" || c === "NETBANKING" ? c : undefined);
+
 function Success({ order }: { order: Order }) {
+  const paidOnline = order.payment?.method === "ONLINE" && order.payment.status === "PAID";
   return (
-    <div className="container-x py-16">
-      <div className="card mx-auto max-w-xl p-8 text-center">
-        <CheckCircle2 className="mx-auto h-12 w-12 text-ok" aria-hidden />
-        <h1 className="mt-3 text-2xl font-extrabold">Order #{order.number} placed</h1>
-        <p className="mt-1 text-muted">Pay {formatMoney(order.totalMinor)} on delivery.</p>
-        {order.estimatedDeliveryAt && <p className="mt-2 font-semibold">Estimated arrival around {formatTime(order.estimatedDeliveryAt)} (an estimate, not a guarantee)</p>}
+    <div className="container-x py-12 sm:py-16">
+      <div className="card mx-auto max-w-xl p-6 text-center sm:p-8" role="status" aria-live="polite">
+        <CheckCircle2 className="mx-auto h-14 w-14 text-ok" aria-hidden />
+        <h1 className="mt-3 text-2xl font-extrabold">{paidOnline ? "Payment successful" : "Order placed"}</h1>
+        <p className="mt-1 text-muted">{paidOnline ? `We received ${formatMoney(order.totalMinor)}. Thank you for your order!` : `Please keep ${formatMoney(order.totalMinor)} ready to pay on delivery.`}</p>
+        <p className="mx-auto mt-4 inline-block rounded-xl bg-band px-4 py-2 text-sm">Order ID <b data-testid="order-number">#{order.number}</b></p>
+        <ul className="mt-5 divide-y divide-line rounded-xl border border-line text-left text-sm">
+          {order.items.map((i) => <li key={i.id} className="flex justify-between gap-3 px-4 py-2.5"><span>{i.quantity} × {i.name}</span><span className="font-semibold">{formatMoney(i.unitMinor * i.quantity)}</span></li>)}
+          <li className="flex justify-between gap-3 bg-band px-4 py-2.5 font-extrabold"><span>{paidOnline ? "Paid" : "To pay"}</span><span>{formatMoney(order.totalMinor)}</span></li>
+        </ul>
+        {order.estimatedDeliveryAt && <p className="mt-4 font-semibold">Estimated arrival around {formatTime(order.estimatedDeliveryAt)} <span className="font-normal text-muted">(an estimate, not a guarantee)</span></p>}
         <p className="mt-2 text-sm text-ink-soft">{formatAddress({ house: order.addrHouse, line1: order.addrLine1, landmark: order.addrLandmark, area: order.addrArea, district: order.addrDistrict, city: order.addrCity, state: order.addrState, pincode: order.addrPincode })}</p>
-        <div className="mt-6 flex justify-center gap-3"><Link to="/orders" className="btn-primary">View my orders</Link><Link to="/shop" className="btn-ghost">Keep shopping</Link></div>
+        <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row"><Link to="/shop" className="btn-add-solid px-8">Continue shopping</Link><Link to="/orders" className="btn-ghost">View my orders</Link></div>
+      </div>
+    </div>
+  );
+}
+
+function PayPanel({ order, busy, error, onPay, onLater }: { order: Order; busy: boolean; error: { message: string; kind: "cancelled" | "failed" | "error" } | null; onPay: () => void; onLater: () => void }) {
+  const Icon = error?.kind === "failed" ? XCircle : AlertTriangle;
+  return (
+    <div className="container-x py-12 sm:py-16">
+      <div className="card mx-auto max-w-xl p-6 text-center sm:p-8" role="status" aria-live="polite">
+        {busy ? <Spinner /> : error ? <Icon className={`mx-auto h-12 w-12 ${error.kind === "failed" ? "text-danger" : "text-warn"}`} aria-hidden /> : <Lock className="mx-auto h-10 w-10 text-accent" aria-hidden />}
+        <h1 className="mt-3 text-2xl font-extrabold">{busy ? "Processing your payment…" : error?.kind === "failed" ? "Payment failed" : error?.kind === "cancelled" ? "Payment cancelled" : error ? "We could not start the payment" : "Complete your payment"}</h1>
+        {busy && <p className="mt-2 font-semibold">Please do not refresh or close this page.</p>}
+        {!busy && error && <p role="alert" className="mx-auto mt-3 max-w-md rounded-xl bg-band p-3 text-sm font-semibold">{error.message}</p>}
+        <p className="mt-4 text-sm text-muted">Order <b>#{order.number}</b> · Amount to pay <b className="text-ink">{formatMoney(order.totalMinor)}</b></p>
+        <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+          <button className="btn-add-solid px-8" onClick={onPay} disabled={busy}>{busy ? "Processing…" : error ? "Retry payment" : "Pay securely"}</button>
+          <Link to="/orders" onClick={onLater} className="btn-ghost">Pay later from My orders</Link>
+        </div>
+        <p className="mt-4 text-xs text-muted">Your order is saved and your cart is kept. Nothing is charged until the payment succeeds.</p>
       </div>
     </div>
   );

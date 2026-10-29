@@ -43,6 +43,9 @@ function Orders() {
   const [status, setStatus] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const list = useAsync(() => api.get<{ orders: Order[] }>("/orders", { params: { all: true, status: status || undefined } }).then((r) => r.data.orders), [status]);
+  const refundAction = async (o: Order, action: "retry" | "refresh") => {
+    try { await api.post(`/orders/${o.id}/refund/${action}`); toast.success(action === "retry" ? "Refund requested again" : "Refund status updated"); list.reload(); } catch (e) { toast.error(apiError(e).message); }
+  };
   const move = async (o: Order, to: OrderStatus) => {
     try { await api.patch(`/orders/${o.id}/status`, { status: to }); toast.success(`Order #${o.number}: ${STATUS_LABEL[to]}`); list.reload(); } catch (e) { toast.error(apiError(e).message); }
   };
@@ -55,7 +58,7 @@ function Orders() {
           <li key={o.id} className="card p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <button className="text-left" onClick={() => setOpen(open === o.id ? null : o.id)} aria-expanded={open === o.id}><b>Order #{o.number}</b> <span className="text-sm text-muted">· {o.user?.name} · {formatDateTime(o.createdAt)}</span></button>
-              <div className="flex items-center gap-3"><StatusBadge status={o.status} /><b>{formatMoney(o.totalMinor)}</b>
+              <div className="flex items-center gap-3"><StatusBadge status={o.status} />{o.payment && <span className={`chip ${o.payment.status === "PAID" ? "text-ok" : o.payment.status === "FAILED" ? "text-danger" : "text-muted"}`} title={o.payment.failureReason ?? undefined}>{o.payment.method === "ONLINE" ? "Online" : o.payment.method} · {o.payment.status.toLowerCase()}</span>}{o.payment?.refundStatus && <span className={`chip ${o.payment.refundStatus === "COMPLETED" ? "text-ok" : o.payment.refundStatus === "FAILED" ? "text-danger" : "text-muted"}`}>Refund: {o.payment.refundStatus.toLowerCase()}</span>}<b>{formatMoney(o.totalMinor)}</b>
                 {NEXT[o.status] && <button className="btn-add-solid !min-h-9 !px-4" onClick={() => move(o, NEXT[o.status]!)}>Mark {STATUS_LABEL[NEXT[o.status]!].toLowerCase()}</button>}
                 {o.status !== "DELIVERED" && o.status !== "CANCELLED" && <button className="btn-ghost !min-h-9" onClick={() => window.confirm(`Cancel order #${o.number}?`) && move(o, "CANCELLED")}>Cancel</button>}</div>
             </div>
@@ -63,6 +66,17 @@ function Orders() {
               <div className="mt-3 grid gap-4 border-t border-line pt-3 sm:grid-cols-2">
                 <div><h4 className="mb-1 text-xs font-bold uppercase text-muted">Delivery address</h4><OrderAddress o={o} />{o.instructions && <p className="mt-2 text-sm">Note: {o.instructions}</p>}<p className="mt-2 text-xs text-muted">Customer: {o.user?.email}{o.user?.phone ? ` · ${o.user.phone}` : ""}</p></div>
                 <div><h4 className="mb-1 text-xs font-bold uppercase text-muted">Items</h4><ul className="text-sm">{o.items.map((i) => <li key={i.id}>{i.quantity} × {i.name} <span className="text-muted">({formatMoney(i.unitMinor)})</span></li>)}</ul><p className="mt-2 text-xs text-muted">Payment: {o.payment?.method} · {o.payment?.status}</p></div>
+                {o.status === "CANCELLED" && (
+                  <div className="sm:col-span-2" data-testid="admin-cancel-info">
+                    <h4 className="mb-1 text-xs font-bold uppercase text-muted">Cancellation</h4>
+                    <p className="text-sm">Cancelled {formatDateTime(o.cancelledAt ?? o.updatedAt)}{o.cancelledBy ? ` by ${o.cancelledBy === "ADMIN" ? "our team" : "the customer"}` : ""}{o.cancelReason ? ` · Reason: ${o.cancelReason}` : ""}</p>
+                    {o.payment?.method === "ONLINE" && o.payment.refundStatus && (
+                      <p className="mt-1 text-sm">Refund: <b>{o.payment.refundStatus.toLowerCase()}</b>{o.payment.refundId ? ` (${o.payment.refundId})` : ""}{o.payment.refundFailureReason ? ` · ${o.payment.refundFailureReason}` : ""}
+                        {(o.payment.refundStatus === "PROCESSING" || o.payment.refundStatus === "REQUESTED") && <button className="btn-ghost !min-h-8 ml-2 !px-3" onClick={() => refundAction(o, "refresh")}>Check status</button>}
+                        {(o.payment.refundStatus === "REQUESTED" || o.payment.refundStatus === "FAILED") && <button className="btn-ghost !min-h-8 ml-2 !px-3" onClick={() => refundAction(o, "retry")}>Retry refund</button>}</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </li>))}</ul>

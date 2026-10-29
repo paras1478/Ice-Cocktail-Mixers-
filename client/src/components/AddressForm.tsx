@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Crosshair, MapPin } from "lucide-react";
 import { api, apiError } from "../lib/api";
 import { cleanPin, pincodeError } from "../lib/pincode";
 import { mapLink } from "../lib/format";
+import { accuracyNote, currentFix, describeAccuracy, GEO_MESSAGES, GeoError, inIndia, isCoarse } from "../lib/geolocate";
 import { usePincodeLookup } from "../lib/usePincodeLookup";
 import type { AddressType, PostOffice } from "../lib/types";
 import { PinFeedback } from "./DeliveryInfo";
 import { FieldError } from "./ui";
+
+const LocationMap = lazy(() => import("./LocationMap")); // Leaflet is only downloaded when a location is actually shown
+const MapFallback = () => <div className="h-56 animate-pulse rounded-xl bg-tint sm:h-72" aria-hidden />;
 
 export interface AddressDraft {
   type: AddressType;
@@ -52,7 +56,7 @@ export const draftFromRecord = (a: { type: AddressType | null; house: string | n
   type: a.type ?? "HOME", house: a.house ?? "", line1: a.line1, landmark: a.landmark ?? "", area: a.area ?? "", district: a.district ?? a.city, state: a.state, stateCode: a.stateCode ?? "", phone: a.phone ?? "", pincode: a.pincode, latitude: a.latitude, longitude: a.longitude,
 });
 
-interface Detected { latitude: number; longitude: number; address?: { line1: string | null; area: string | null; district: string | null; city: string | null; state: string | null; pincode: string | null }; note?: string }
+interface Detected { latitude: number; longitude: number; accuracy?: number | null; outside?: boolean; coarse?: boolean; address?: { line1: string | null; area: string | null; district: string | null; city: string | null; state: string | null; pincode: string | null }; note?: string }
 
 /** `onChange` receives a patch, never a whole object, so a slow lookup can't overwrite fields typed in the meantime. */
 export function AddressForm({ value, errors, onChange }: { value: AddressDraft; errors: Record<string, string>; onChange: (patch: Partial<AddressDraft>) => void }) {
@@ -88,23 +92,40 @@ export function AddressForm({ value, errors, onChange }: { value: AddressDraft; 
     onChange({ area: o.name, district: value.district && value.district !== auto.current.district ? value.district : o.district, ...(keepState ? {} : { state: o.state, stateCode: o.stateCode ?? "" }) });
   };
 
-  const locate = () => {
-    if (!navigator.geolocation) return setGps({ busy: false, error: "Your browser does not support location access. Enter the address manually.", found: null });
+  // Only the most recent request may update the screen (a slow reverse lookup must not overwrite a newer pin).
+  const seq = useRef(0);
+  const reverse = async (latitude: number, longitude: number, accuracy: number | null, id: number) => {
+    if (!inIndia(latitude, longitude)) {
+      if (id === seq.current) setGps({ busy: false, error: null, found: { latitude, longitude, accuracy, outside: true, note: "This location is outside India, where we deliver, so we can't suggest an address or use this pin. Enter your address manually." } });
+      return;
+    }
+    if (isCoarse(accuracy)) {
+      // A city-level guess is not an address: looking it up would just name a landmark near the city centre, so no address is suggested.
+      if (id === seq.current) setGps({ busy: false, error: null, found: { latitude, longitude, accuracy, coarse: true, note: "We can't suggest an address from such a rough position. Drag the pin to your delivery spot and the address will be looked up for that spot." } });
+      return;
+    }
+    try {
+      const { data } = await api.post("/geo/reverse", { latitude, longitude });
+      if (id === seq.current) setGps({ busy: false, error: null, found: { latitude, longitude, accuracy, address: data } });
+    } catch (e) {
+      if (id === seq.current) setGps({ busy: false, error: null, found: { latitude, longitude, accuracy, note: apiError(e).message } });
+    }
+  };
+  const locate = async () => {
+    const id = ++seq.current;
     setGps({ busy: true, error: null, found: null });
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const latitude = Number(pos.coords.latitude.toFixed(6));
-        const longitude = Number(pos.coords.longitude.toFixed(6));
-        try {
-          const { data } = await api.post("/geo/reverse", { latitude, longitude });
-          setGps({ busy: false, error: null, found: { latitude, longitude, address: data } });
-        } catch (e) {
-          setGps({ busy: false, error: null, found: { latitude, longitude, note: apiError(e).message } });
-        }
-      },
-      (err) => setGps({ busy: false, found: null, error: err.code === err.PERMISSION_DENIED ? "Location permission was denied. You can still enter your address manually." : "We couldn't get your location. Enter the address manually." }),
-      { enableHighAccuracy: true, timeout: 12000 },
-    );
+    try {
+      const fix = await currentFix();
+      if (id === seq.current) await reverse(fix.latitude, fix.longitude, fix.accuracy, id);
+    } catch (e) {
+      if (id === seq.current) setGps({ busy: false, found: null, error: e instanceof GeoError ? e.message : GEO_MESSAGES.unavailable });
+    }
+  };
+  // The pin was dragged: the address shown must belong to the NEW coordinates, so look it up again.
+  const moveFound = (latitude: number, longitude: number) => {
+    const id = ++seq.current;
+    setGps((g) => ({ ...g, found: { latitude, longitude, accuracy: null, note: "Looking up the address for the moved pin…" } }));
+    void reverse(latitude, longitude, null, id);
   };
   // Nothing is filled until the customer confirms what was detected.
   const useDetected = (d: Detected, withAddress: boolean) => {
@@ -138,10 +159,12 @@ export function AddressForm({ value, errors, onChange }: { value: AddressDraft; 
           <div className="mt-3 rounded-lg border border-line bg-surface p-3 text-sm" data-testid="gps-found">
             {gps.found.address ? <p><b>Detected:</b> {[gps.found.address.line1, gps.found.address.area, gps.found.address.district ?? gps.found.address.city, gps.found.address.state, gps.found.address.pincode].filter(Boolean).join(", ")}</p>
               : <p className="text-warn">{gps.found.note}</p>}
-            <p className="mt-1 text-xs text-muted">Pin: {gps.found.latitude}, {gps.found.longitude}</p>
+            {!gps.found.outside && <div className="mt-3"><Suspense fallback={<MapFallback />}><LocationMap latitude={gps.found.latitude} longitude={gps.found.longitude} accuracy={gps.found.accuracy} onMove={moveFound} label="Your detected location. Drag the pin to adjust it." /></Suspense></div>}
+            <p className="mt-1 text-xs text-muted" data-testid="gps-coords">Latitude {gps.found.latitude}, longitude {gps.found.longitude} · accuracy {describeAccuracy(gps.found.accuracy ?? null)}{!gps.found.outside && " · drag the pin to adjust it"}</p>
+            {accuracyNote(gps.found.accuracy ?? null) && <p className="mt-1 text-xs font-semibold text-warn">{accuracyNote(gps.found.accuracy ?? null)}</p>}
             <div className="mt-2 flex flex-wrap gap-2">
               {gps.found.address && <button type="button" className="btn-add-solid" onClick={() => useDetected(gps.found!, true)}>Use this address</button>}
-              <button type="button" className="btn-ghost" onClick={() => useDetected(gps.found!, false)}>Use pin only</button>
+              {!gps.found.outside && !gps.found.coarse && <button type="button" className="btn-ghost" onClick={() => useDetected(gps.found!, false)}>Use pin only</button>}
               <button type="button" className="btn-ghost" onClick={() => setGps({ busy: false, error: null, found: null })}>Dismiss</button>
             </div>
           </div>
@@ -151,6 +174,7 @@ export function AddressForm({ value, errors, onChange }: { value: AddressDraft; 
             <a className="font-semibold underline" href={mapLink(value.latitude, value.longitude)} target="_blank" rel="noreferrer">View on map</a>
             <button type="button" className="font-semibold underline" onClick={() => onChange({ latitude: null, longitude: null })}>Remove pin</button></p>
         )}
+        {value.latitude !== null && value.longitude !== null && <div className="mt-2"><Suspense fallback={<MapFallback />}><LocationMap latitude={value.latitude} longitude={value.longitude} label="Map showing the pin saved with this address" /></Suspense></div>}
       </div>
 
       <div>

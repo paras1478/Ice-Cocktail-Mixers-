@@ -175,3 +175,23 @@ Atlas setup:
 3. Render → Environment → add `MONGODB_URI` (and optionally `MONGODB_DB`), then redeploy.
 
 Test it: `/api/health/db` shows `"mongo":{"configured":true,"ok":true}`. If not, `reason` is `AUTH_FAILED` (wrong user/password), `UNREACHABLE` (Network Access / host) or `BAD_URI`. Then sign up on the site, sign out, sign in again; the user appears in Atlas → Browse Collections → `icemixers.users`. If Atlas is down, sign-in returns a safe 503 and the rest of the shop keeps working.
+
+### Online payments with Razorpay (test mode first)
+
+Customers can pay by UPI or card with Razorpay Standard Checkout; Cash on Delivery keeps working. How it works: the order is saved first (stock reserved, payment `PENDING`), the server creates the Razorpay order for the **server-computed total**, the browser pays, and the server marks the order paid only after it verifies the signature **and** asks Razorpay for the real payment status and amount. A webhook confirms payments even if the customer closes the tab. Paid orders are ordinary PostgreSQL orders, so they appear in the admin Orders tab with an "Online · paid" badge.
+
+Render environment variables (backend only; the secret is never sent to the browser or logged):
+
+| Variable | Value |
+| --- | --- |
+| `RAZORPAY_KEY_ID` | `rzp_test_...` from Razorpay Dashboard → Account & Settings → API keys (Test mode) |
+| `RAZORPAY_KEY_SECRET` | the matching secret |
+| `RAZORPAY_WEBHOOK_SECRET` | a secret you choose; use the same value in the webhook below |
+| `RAZORPAY_ALLOW_LIVE` | leave unset. Live keys (`rzp_live_...`) are ignored unless this is `true` |
+
+Razorpay Dashboard (switch to **Test Mode**):
+1. Webhooks → Add: URL `https://ice-cocktail-mixers.onrender.com/api/payments/razorpay/webhook`, secret = `RAZORPAY_WEBHOOK_SECRET`, events `payment.captured`, `order.paid`, `payment.failed`.
+2. Test payment: choose "Pay online" at checkout. UPI success: `success@razorpay`; UPI failure: `failure@razorpay`. Test card: `4111 1111 1111 1111`, any future expiry, any CVV, OTP `1234` if asked.
+3. Check `GET /api/payments/config` returns `{"enabled":true,"testMode":true}`, then the order shows as paid in My orders and in Admin → Orders.
+
+Refunds are not automatic: paid online orders are cancelled by an admin and refunded from the Razorpay Dashboard. Before going live, verify test mode end to end, then replace the keys with live keys and set `RAZORPAY_ALLOW_LIVE=true`.

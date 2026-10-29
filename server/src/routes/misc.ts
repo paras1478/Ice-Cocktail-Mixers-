@@ -1,3 +1,4 @@
+import { onlinePaymentsEnabled } from "../lib/razorpay.js";
 import { Router } from "express";
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
@@ -23,7 +24,7 @@ publicRouter.get("/config", (_req, res) => {
     deliveryFeeMinor: pricingConfig.deliveryFeeMinor,
     freeDeliveryThresholdMinor: pricingConfig.freeDeliveryThresholdMinor,
     taxRateBps: pricingConfig.taxRateBps,
-    payments: { cod: env.ENABLE_COD === "true", card: Boolean(env.STRIPE_SECRET_KEY) },
+    payments: { cod: env.ENABLE_COD === "true", card: Boolean(env.STRIPE_SECRET_KEY), online: onlinePaymentsEnabled() },
     location: { pincodeLookup: true, reverseGeocoding: true },
   });
 });

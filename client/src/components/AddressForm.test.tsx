@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+// Leaflet needs a real browser layout; the map is covered by the geolocation tests and the manual checks.
+vi.mock("./LocationMap", () => ({ default: ({ latitude, longitude }: { latitude: number; longitude: number }) => <div data-testid="location-map" data-lat={latitude} data-lng={longitude} /> }));
 import { AddressForm, emptyAddress, validateAddress, type AddressDraft } from "./AddressForm";
 
 const get = vi.fn();
@@ -224,3 +226,57 @@ describe("GPS location", () => {
     await waitFor(() => expect(state_().latitude).toBe(28.5));
   });
 });
+
+describe("map pin", () => {
+  it("shows the detected pin on the map at the device's latitude and longitude, with the address and accuracy note", async () => {
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: (ok: (p: unknown) => void) => ok({ coords: { latitude: 28.4312, longitude: 77.1012, accuracy: 3000 } }) } });
+    get.mockResolvedValue({ data: { pincode: "122018", postal: { status: "not_found" }, delivery: { serviceable: false, pincode: "122018", reason: "not_covered" } } });
+    post.mockResolvedValue({ data: { line1: "12 MG Road", area: "Sector 54", district: "Gurgaon", city: "Gurgaon", state: "Haryana", pincode: "122018" } });
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: /current location/i }));
+    const map = await screen.findByTestId("location-map");
+    expect(map).toHaveAttribute("data-lat", "28.4312");
+    expect(map).toHaveAttribute("data-lng", "77.1012");
+    expect(post).toHaveBeenCalledWith("/geo/reverse", { latitude: 28.4312, longitude: 77.1012 }); // the address belongs to these coordinates
+    expect(screen.getByText(/Approximate location/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Use pin only" }));
+    await waitFor(() => expect(state_()).toMatchObject({ latitude: 28.4312, longitude: 77.1012 }));
+    expect(screen.getAllByTestId("location-map")[0]).toHaveAttribute("data-lat", "28.4312"); // the saved pin is shown on the map too
+  });
+
+  it("does not offer a pin or an address for a location outside India, and says why", async () => {
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: (ok: (p: unknown) => void) => ok({ coords: { latitude: 51.5, longitude: -0.12, accuracy: 30 } }) } });
+    post.mockClear();
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: /current location/i }));
+    await screen.findByTestId("gps-found");
+    expect(screen.getByText(/outside India/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Use pin only" })).toBeNull();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("shows a specific message for a timeout, with a way to continue manually", async () => {
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: (_ok: unknown, err: (e: unknown) => void) => err({ code: 3 }) } });
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: /current location/i }));
+    await waitFor(() => expect(screen.getByText(/took too long/)).toBeInTheDocument());
+  });
+});
+
+describe("rough (network / IP based) location", () => {
+  it("shows the real coordinates and accuracy, labels it approximate, and suggests no address or pin from a city-level guess", async () => {
+    Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: (ok: (p: unknown) => void) => ok({ coords: { latitude: 25.6093, longitude: 85.1235, accuracy: 200000 } }) } });
+    post.mockClear();
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: /current location/i }));
+    await screen.findByTestId("gps-found");
+    expect(screen.getByTestId("gps-coords")).toHaveTextContent("Latitude 25.6093, longitude 85.1235 · accuracy ±200 km");
+    expect(screen.getByText(/Very approximate/)).toHaveTextContent(/not GPS/);
+    expect(screen.getByTestId("location-map")).toHaveAttribute("data-lat", "25.6093");
+    expect(post).not.toHaveBeenCalled(); // no reverse lookup: it would only name a landmark near the city centre
+    expect(screen.queryByRole("button", { name: "Use this address" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use pin only" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+  });
+});
+

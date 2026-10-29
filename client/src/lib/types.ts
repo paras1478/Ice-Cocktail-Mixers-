@@ -133,8 +133,23 @@ export interface Order {
   estimatedDeliveryAt: string | null;
   createdAt: string;
   updatedAt: string;
-  items: { id: string; name: string; unitMinor: number; quantity: number }[];
-  payment: { method: "COD" | "CARD"; status: string; amountMinor: number } | null;
+  /** Set when the order was cancelled (older cancelled orders have no cancelledAt: use updatedAt). */
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  cancelledBy?: "CUSTOMER" | "ADMIN" | null;
+  items: { id: string; productId: string; name: string; unitMinor: number; quantity: number; image?: string | null }[];
+  payment: {
+    method: "COD" | "CARD" | "ONLINE";
+    status: string;
+    amountMinor: number;
+    paidAt?: string | null;
+    failureReason?: string | null;
+    /** From the payment provider only: REQUESTED (asking), PROCESSING (accepted), COMPLETED (processed), FAILED. */
+    refundStatus?: "REQUESTED" | "PROCESSING" | "COMPLETED" | "FAILED" | null;
+    refundId?: string | null;
+    refundedAt?: string | null;
+    refundFailureReason?: string | null;
+  } | null;
   user?: { id: string; name: string; email: string; phone?: string | null };
 }
 
@@ -169,7 +184,7 @@ export interface AppConfig {
   deliveryFeeMinor: number;
   freeDeliveryThresholdMinor: number;
   taxRateBps: number;
-  payments: { cod: boolean; card: boolean };
+  payments: { cod: boolean; card: boolean; online?: boolean };
   location: { pincodeLookup: boolean; reverseGeocoding: boolean };
 }
 

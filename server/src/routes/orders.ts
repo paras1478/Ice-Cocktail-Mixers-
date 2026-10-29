@@ -6,6 +6,9 @@ import { prisma } from "../lib/db.js";
 import { ah, parse } from "../lib/http.js";
 import { HttpError } from "../lib/errors.js";
 import { env } from "../lib/env.js";
+import { onlinePaymentsEnabled } from "../lib/razorpay.js";
+import { cancelOrder } from "../services/orderCancel.js";
+import { refreshRefund, startRefund } from "../services/refunds.js";
 import { requireAuth } from "../middleware/auth.js";
 import { buildQuote } from "../services/checkout.js";
 import { addressFields, checkCoords, COORD_MESSAGE, hasPlace, normalizeAddress, PLACE_MESSAGE, serviceability } from "../lib/address.js";
@@ -19,7 +22,14 @@ const orderLimiter = rateLimit({
   message: { error: "Too many orders, please try again later" },
 });
 
-const include = { items: true, payment: true } as const;
+// Items carry their first product photo so the order card can show thumbnails.
+const include = { items: { include: { product: { select: { images: { orderBy: { sortOrder: "asc" as const }, take: 1, select: { url: true } } } } } }, payment: true } as const;
+const withUser = { ...include, user: { select: { id: true, name: true, email: true, phone: true } } } as const;
+
+function serialize<O extends { items: { product: { images: { url: string }[] } }[] }>(o: O) {
+  return { ...o, items: o.items.map(({ product, ...rest }) => ({ ...rest, image: product.images[0]?.url ?? null })) };
+}
+const loadOrder = async (id: string) => serialize(await prisma.order.findUniqueOrThrow({ where: { id }, include: withUser }));
 
 const createBody = z.object({
   items: z.array(z.object({ productId: z.string().min(1), quantity: z.number().int().min(1).max(50) })).min(1, "Your cart is empty").max(100),
@@ -31,7 +41,7 @@ const createBody = z.object({
   saveAddress: z.boolean().optional(),
   addressConfirmed: z.boolean().refine((v) => v === true, { message: "Please confirm your delivery address" }),
   instructions: z.string().trim().max(300).optional(),
-  paymentMethod: z.enum(["COD", "CARD"]),
+  paymentMethod: z.enum(["COD", "CARD", "ONLINE"]),
   // The total the customer saw. If prices changed since, we refuse rather than charge a different amount.
   expectedTotalMinor: z.number().int().min(0).optional(),
 });
@@ -43,6 +53,7 @@ orderRouter.post(
   ah(async (req, res) => {
     const b = parse(createBody, req.body);
     if (b.paymentMethod === "COD" && env.ENABLE_COD !== "true") throw new HttpError(400, "Cash on delivery is not available");
+    if (b.paymentMethod === "ONLINE" && !onlinePaymentsEnabled()) throw new HttpError(503, "Online payments are not available right now. Please choose another payment method.");
     if (b.paymentMethod === "CARD") throw new HttpError(501, env.STRIPE_SECRET_KEY ? "Card payment provider integration is not implemented yet" : "Card payments are not configured on this server");
 
     const area = await serviceability(b.address.pincode);
@@ -103,7 +114,7 @@ orderRouter.post(
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
-    res.status(201).json({ order });
+    res.status(201).json({ order: serialize(order) });
   }),
 );
 
@@ -115,20 +126,20 @@ orderRouter.get(
     const orders = await prisma.order.findMany({
       where: { ...(all ? {} : { userId: req.user!.id }), ...(status ? { status } : {}) },
       orderBy: { createdAt: "desc" },
-      include: { ...include, user: { select: { id: true, name: true, email: true, phone: true } } },
+      include: withUser,
       take: 200,
     });
-    res.json({ orders });
+    res.json({ orders: orders.map(serialize) });
   }),
 );
 
 orderRouter.get(
   "/:id",
   ah(async (req, res) => {
-    const o = await prisma.order.findUnique({ where: { id: req.params.id }, include: { ...include, user: { select: { id: true, name: true, email: true, phone: true } } } });
+    const o = await prisma.order.findUnique({ where: { id: req.params.id }, include: withUser });
     // 404 (not 403) for other people's orders so ids cannot be probed.
     if (!o || (o.userId !== req.user!.id && req.user!.role !== "ADMIN")) throw new HttpError(404, "Order not found");
-    res.json({ order: o });
+    res.json({ order: serialize(o) });
   }),
 );
 
@@ -139,14 +150,12 @@ async function setStatus(id: string, next: OrderStatus, isAdmin: boolean, userId
     const o = await tx.order.findUnique({ where: { id }, include: { items: true, payment: true } });
     if (!o || (!isAdmin && o.userId !== userId)) throw new HttpError(404, "Order not found");
     if (o.status === "DELIVERED" || o.status === "CANCELLED") throw new HttpError(409, `Order is already ${o.status.toLowerCase()}`);
-    if (next === "CANCELLED") {
-      if (!isAdmin && o.status !== "PLACED" && o.status !== "CONFIRMED") throw new HttpError(409, "This order can no longer be cancelled");
-      for (const i of o.items) await tx.product.update({ where: { id: i.productId }, data: { stock: { increment: i.quantity } } });
-    } else if (FLOW.indexOf(next) !== FLOW.indexOf(o.status) + 1) {
-      throw new HttpError(409, `Cannot move order from ${o.status} to ${next}`);
-    }
+    if (FLOW.indexOf(next) !== FLOW.indexOf(o.status) + 1) throw new HttpError(409, `Cannot move order from ${o.status} to ${next}`);
     if (next === "DELIVERED" && o.payment?.method === "COD") await tx.payment.update({ where: { orderId: o.id }, data: { status: "PAID" } });
-    return tx.order.update({ where: { id }, data: { status: next }, include: { items: true, payment: true } });
+    // Conditional update: a concurrent cancellation or move cannot be overwritten.
+    const r = await tx.order.updateMany({ where: { id, status: o.status }, data: { status: next } });
+    if (r.count !== 1) throw new HttpError(409, "This order changed just now. Please refresh and try again.");
+    return tx.order.findUniqueOrThrow({ where: { id }, include });
   });
 }
 
@@ -157,6 +166,41 @@ orderRouter.patch(
     const isAdmin = req.user!.role === "ADMIN";
     // Customers may only cancel their own orders; every other transition is admin-only.
     if (!isAdmin && status !== "CANCELLED") throw new HttpError(403, "Admin access required");
-    res.json({ order: await setStatus(req.params.id, status, isAdmin, req.user!.id) });
+    if (status === "CANCELLED") {
+      await cancelOrder(req.params.id, req.user!); // same rules, refund and idempotency as POST /:id/cancel
+      return void res.json({ order: await loadOrder(req.params.id) });
+    }
+    res.json({ order: serialize(await setStatus(req.params.id, status, isAdmin, req.user!.id)) });
+  }),
+);
+
+// Cancel an order. Customers: while Placed or Confirmed. Admins: until it is delivered. Repeating the request is harmless.
+orderRouter.post(
+  "/:id/cancel",
+  ah(async (req, res) => {
+    const { reason } = parse(z.object({ reason: z.string().trim().max(200).optional() }), req.body ?? {});
+    const r = await cancelOrder(req.params.id, req.user!, reason);
+    res.json({ order: await loadOrder(req.params.id), alreadyCancelled: !r.changed });
+  }),
+);
+
+// "Check status": asks Razorpay for the refund's real state. Owner or admin.
+orderRouter.post(
+  "/:id/refund/refresh",
+  ah(async (req, res) => {
+    const o = await prisma.order.findFirst({ where: { id: req.params.id, ...(req.user!.role === "ADMIN" ? {} : { userId: req.user!.id }) }, select: { id: true } });
+    if (!o) throw new HttpError(404, "Order not found");
+    await refreshRefund(o.id);
+    res.json({ order: await loadOrder(o.id) });
+  }),
+);
+
+// Admin: ask Razorpay again for a refund that was not accepted or that the provider reported as failed.
+orderRouter.post(
+  "/:id/refund/retry",
+  ah(async (req, res) => {
+    if (req.user!.role !== "ADMIN") throw new HttpError(403, "Admin access required");
+    await startRefund(req.params.id, true);
+    res.json({ order: await loadOrder(req.params.id) });
   }),
 );

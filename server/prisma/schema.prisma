@@ -24,12 +24,20 @@ enum OrderStatus {
 enum PaymentMethod {
   COD
   CARD
+  ONLINE
 }
 enum PaymentStatus {
   PENDING
   PAID
   FAILED
   REFUNDED
+}
+// Refund lifecycle of an online payment, always mirroring what Razorpay reports.
+enum RefundStatus {
+  REQUESTED
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 enum AddressType {
   HOME
@@ -242,6 +250,9 @@ model Order {
   updatedAt     DateTime    @updatedAt
   @@index([userId, createdAt])
   @@index([status])
+  cancelledAt   DateTime?
+  cancelReason  String?
+  cancelledBy   String? // CUSTOMER or ADMIN
 }
 
 model OrderItem {
@@ -264,6 +275,16 @@ model Payment {
   status      PaymentStatus @default(PENDING)
   amountMinor Int
   providerRef String?
+  // Razorpay: the gateway order created by the server, the verified payment id, and when/why it was settled.
+  providerOrderId   String?   @unique
+  providerPaymentId String?   @unique
+  paidAt            DateTime?
+  failureReason     String?
+  // Refund of a cancelled, paid online order. refundStatus is set from the provider's answers only; status becomes REFUNDED when Razorpay confirms it.
+  refundId            String?       @unique
+  refundStatus        RefundStatus?
+  refundedAt          DateTime?
+  refundFailureReason String?
   createdAt   DateTime      @default(now())
 }
 

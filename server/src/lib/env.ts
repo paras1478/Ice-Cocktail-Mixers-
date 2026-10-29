@@ -7,7 +7,8 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1),
   // Optional. When set, user credentials (email + password hash) are stored in MongoDB Atlas instead of PostgreSQL (orders, carts and
   // addresses stay in PostgreSQL). Keep this value in the backend environment only: never in a VITE_ variable and never in source code.
-  MONGODB_URI: z.string().regex(/^mongodb(\+srv)?:\/\//, "MONGODB_URI must start with mongodb:// or mongodb+srv://").optional(),
+  // A blank value (e.g. "MONGODB_URI=" left empty in a hosting dashboard) means "not configured", not an error.
+  MONGODB_URI: z.preprocess((v) => (v === "" ? undefined : v), z.string().regex(/^mongodb(\+srv)?:\/\//, "MONGODB_URI must start with mongodb:// or mongodb+srv://").optional()),
   MONGODB_DB: z.string().min(1).default("icemixers"),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   // Browser origin(s) allowed by CORS: one value or a comma-separated list, e.g. "https://app.vercel.app,https://staging.vercel.app".
@@ -20,6 +21,11 @@ const schema = z.object({
   PORT: z.coerce.number().default(4000),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   STRIPE_SECRET_KEY: z.string().optional(),
+  // Razorpay online payments (UPI / cards). Backend only: the secret never reaches the frontend or the logs.
+  RAZORPAY_KEY_ID: z.string().trim().min(1).optional(),
+  RAZORPAY_KEY_SECRET: z.string().trim().min(1).optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().trim().min(1).optional(), // set the same value in Razorpay Dashboard > Webhooks
+  RAZORPAY_ALLOW_LIVE: z.enum(["true", "false"]).default("false"), // live keys (rzp_live_) are refused unless this is "true"
   TAX_RATE_BPS: z.coerce.number().int().min(0).default(1800),
   DELIVERY_FEE_MINOR: z.coerce.number().int().min(0).default(2900),
   FREE_DELIVERY_THRESHOLD_MINOR: z.coerce.number().int().min(0).default(39900),

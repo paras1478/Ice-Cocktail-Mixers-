@@ -488,7 +488,9 @@ describe("order access and status", () => {
     expect((await prisma.product.findUniqueOrThrow({ where: { id: p.id } })).stock).toBe(1);
     await jo.patch(`/api/orders/${o.id}/status`).send({ status: "CANCELLED" }).expect(200);
     expect((await prisma.product.findUniqueOrThrow({ where: { id: p.id } })).stock).toBe(4);
-    await jo.patch(`/api/orders/${o.id}/status`).send({ status: "CANCELLED" }).expect(409);
+    // cancelling is idempotent: a repeated request is harmless and does not restock a second time
+    await jo.patch(`/api/orders/${o.id}/status`).send({ status: "CANCELLED" }).expect(200);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: p.id } })).stock).toBe(4);
     const o2 = (await jo.post("/api/orders").send(checkout([{ productId: p.id, quantity: 1 }])).expect(201)).body.order;
     for (const s of ["CONFIRMED", "PREPARING", "OUT_FOR_DELIVERY", "DELIVERED"]) await admin.patch(`/api/orders/${o2.id}/status`).send({ status: s }).expect(200);
     expect((await prisma.payment.findUniqueOrThrow({ where: { orderId: o2.id } })).status).toBe("PAID");

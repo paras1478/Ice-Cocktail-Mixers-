@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { allowSamplePrices, clientOrigins, env, trustProxy } from "./lib/env.js";
 import { publicProductWhere } from "./lib/publish.js";
+import { paymentRouter, razorpayWebhook } from "./routes/payments.js";
 import { prisma } from "./lib/db.js";
 import { classifyDbError } from "./lib/dbHealth.js";
 import { createMongoStoreFromEnv, mongoReason, sanitize } from "./lib/mongo.js";
@@ -49,6 +50,8 @@ export function createApp() {
       credentials: true,
     }),
   );
+  // The webhook signature covers the exact raw bytes, so it must be parsed before express.json() touches the body.
+  app.post("/api/payments/razorpay/webhook", express.raw({ type: "*/*", limit: "100kb" }), razorpayWebhook);
   app.use(express.json({ limit: "100kb" }));
   app.use(cookieParser());
   if (env.NODE_ENV !== "test") {
@@ -93,6 +96,7 @@ export function createApp() {
   app.use("/api/search", searchRouter);
   app.use("/api/cart", cartRouter);
   app.use("/api/orders", orderRouter);
+  app.use("/api/payments", paymentRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api", publicRouter);
 
