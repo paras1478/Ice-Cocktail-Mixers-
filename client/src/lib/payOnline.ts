@@ -5,10 +5,9 @@ import type { Order } from "./types";
 interface CheckoutSuccess { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }
 interface CheckoutOptions {
   key: string; amount: number; currency: string; order_id: string; name: string; description: string;
-  prefill: { name: string; email: string; contact: string };
+  /** `method` opens the window on that tab (UPI / card / net banking); the customer can still switch. */
+  prefill: { name: string; email: string; contact: string; method?: "upi" | "card" | "netbanking" };
   theme: { color: string };
-  /** Which Razorpay methods the window offers. Omitted = all the account supports. */
-  method?: Record<"upi" | "card" | "netbanking" | "wallet" | "emi" | "paylater", boolean>;
   handler: (r: CheckoutSuccess) => void;
   modal: { ondismiss: () => void; confirm_close: boolean };
 }
@@ -23,7 +22,7 @@ export class PaymentNotCompleted extends Error {
 }
 
 export type OnlineMethod = "UPI" | "CARD" | "NETBANKING";
-const only = (m: OnlineMethod) => ({ upi: m === "UPI", card: m === "CARD", netbanking: m === "NETBANKING", wallet: false, emi: false, paylater: false });
+const tab = (m: OnlineMethod) => m.toLowerCase() as "upi" | "card" | "netbanking";
 
 export function loadCheckout(): Promise<void> {
   if (window.Razorpay) return Promise.resolve();
@@ -50,7 +49,7 @@ export async function payForOrder(orderId: string, choice?: OnlineMethod): Promi
   const result = await new Promise<CheckoutSuccess>((resolve, reject) => {
     const rz = new window.Razorpay!({
       key: g.keyId, amount: g.amountMinor, currency: g.currency, order_id: g.razorpayOrderId,
-      name: "Ice & Mixers Express", description: `Order #${g.orderNumber}`, prefill: g.prefill, theme: { color: "#d97706" }, ...(choice ? { method: only(choice) } : {}),
+      name: "Ice & Mixers Express", description: `Order #${g.orderNumber}`, prefill: { ...g.prefill, ...(choice ? { method: tab(choice) } : {}) }, theme: { color: "#d97706" },
       handler: resolve,
       modal: { ondismiss: () => reject(new PaymentNotCompleted("Payment was cancelled. Your order is saved and nothing was charged: you can pay again.", "cancelled")), confirm_close: true },
     });

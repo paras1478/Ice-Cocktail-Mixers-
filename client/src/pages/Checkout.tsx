@@ -43,6 +43,7 @@ export default function Checkout() {
   const [unpaid, setUnpaid] = useState<Order | null>(null);
   const [payBusy, setPayBusy] = useState(false);
   const [payError, setPayError] = useState<{ message: string; kind: "cancelled" | "failed" | "error" } | null>(null);
+  const confirmRef = useRef<HTMLInputElement>(null);
   const inFlight = useRef(false); // blocks a second click / double submit while an order or payment is being processed
 
   // Start from the default saved address (or the header PIN) once they are known. This runs once and never after the
@@ -118,8 +119,14 @@ export default function Checkout() {
 
   const place = async () => {
     if (inFlight.current) return;
-    if (!q || q.issues.length) return setServerError("Some items in your cart need attention.");
-    if (!confirmed) return setServerError("Please confirm that your delivery address is correct.");
+    if (!q || q.issues.length) return setServerError(q ? "Some items in your cart need attention. Please review the order summary." : cart.quoteError ?? "We are still calculating your total. Please try again in a moment.");
+    if (!confirmed) {
+      // Never fail silently: say what is missing, scroll to it and focus it.
+      setServerError("Please tick “I confirm this delivery address is correct” before paying.");
+      confirmRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      confirmRef.current?.focus();
+      return;
+    }
     setPlacing(true);
     setServerError(null);
     inFlight.current = true;
@@ -216,7 +223,7 @@ export default function Checkout() {
                 {delivery?.serviceable && <p className="mt-1 font-semibold">Estimated delivery: about {delivery.etaMinutes} min (an estimate, not a guarantee)</p>}
                 {contact.instructions && <p className="mt-1 text-muted">Note: {contact.instructions}</p>}
               </div>
-              <label className="flex items-start gap-2 text-sm font-semibold"><input type="checkbox" className="mt-1" checked={confirmed} onChange={(e) => { setConfirmed(e.target.checked); if (e.target.checked) setServerError(null); }} /> I confirm this delivery address is correct.</label>
+              <label className={`flex items-start gap-2 rounded-xl border p-3 text-sm font-semibold ${!confirmed && serverError ? "border-danger bg-band" : "border-line"}`}><input ref={confirmRef} type="checkbox" className="mt-1" checked={confirmed} aria-invalid={!confirmed && !!serverError} data-testid="confirm-address" onChange={(e) => { setConfirmed(e.target.checked); if (e.target.checked) setServerError(null); }} /> I confirm this delivery address is correct.</label>
               <fieldset>
                 <legend className="label">Payment method</legend>
                 {cfg.error && <div className="mb-3"><ErrorState message={cfg.error} onRetry={cfg.reload} /></div>}
@@ -232,8 +239,8 @@ export default function Checkout() {
             </div>
           )}
 
-          {serverError && <p role="alert" className="mt-4 rounded-xl bg-band p-3 text-sm font-semibold text-danger">{serverError}</p>}
           <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 py-3 shadow-[0_-6px_20px_rgba(0,0,0,0.14)] backdrop-blur lg:static lg:z-auto lg:mt-6 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none" data-testid="checkout-actions">
+            {serverError && <p role="alert" className="mx-auto mb-2 max-w-3xl rounded-xl bg-band p-3 text-sm font-semibold text-danger lg:max-w-none" data-testid="checkout-error">{serverError}</p>}
             <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 lg:max-w-none">
               {step > 0 ? <button className="btn-ghost" onClick={() => setStep(step - 1)} disabled={placing}>Back</button> : <Link to="/cart" className="btn-ghost">Back to cart</Link>}
               {q && <p className="text-right text-xs text-muted lg:hidden">Total<br /><b className="text-base text-ink">{formatMoney(q.totals.totalMinor)}</b></p>}

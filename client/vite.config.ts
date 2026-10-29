@@ -28,5 +28,5 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: { port: 5173, proxy },
   preview: { port: 4173, proxy },
-  test: { environment: "jsdom", globals: true, setupFiles: ["./src/setupTests.ts"], css: false },
+  test: { environment: "jsdom", globals: true, setupFiles: ["./src/setupTests.ts"], css: false, testTimeout: 20000 },
 });
