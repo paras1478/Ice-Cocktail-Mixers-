@@ -3,6 +3,7 @@ import request from "supertest";
 import bcrypt from "bcryptjs";
 import { createApp } from "../src/app.js";
 import { prisma } from "../src/lib/db.js";
+import { env } from "../src/lib/env.js";
 import { APPROVED_CATEGORIES } from "../src/lib/catalog.js";
 
 const app = createApp();
@@ -327,12 +328,43 @@ describe("PIN lookup and serviceability", () => {
     await request(app).get("/api/delivery/check?pincode=abc").expect(400);
     expect((await request(app).get("/api/delivery/check?pincode=122018").expect(200)).body).toMatchObject({ serviceable: true, areaName: "Sector 54" });
   });
-  it("reverse geocodes GPS positions via the configured geocoder and reports failures", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ display_name: "x", address: { house_number: "12", road: "MG Road", suburb: "Sector 54", city: "Gurgaon", state: "Haryana", postcode: "122018" } }) }));
-    expect((await request(app).post("/api/geo/reverse").send({ latitude: 28.43, longitude: 77.1 }).expect(200)).body).toMatchObject({ line1: "12 MG Road", state: "Haryana", pincode: "122018" });
+  const place = (extra: object = {}) => ({ housenumber: "12", street: "MG Road", suburb: "Sector 54", city: "Gurugram", county: "Gurugram", state: "Haryana", postcode: "122 018", formatted: "12 MG Road, Sector 54, Gurugram - 122018, HR, India", lat: 28.4312345, lon: 77.1012345, ...extra });
+  const ok = (results: object[]) => ({ ok: true, json: async () => ({ results }) });
+  const withKey = (fn: () => Promise<void>) => async () => { env.GEOAPIFY_API_KEY = "test-key"; try { await fn(); } finally { delete env.GEOAPIFY_API_KEY; } };
+
+  it("reverse geocodes GPS positions through Geoapify, sending the key only upstream", withKey(async () => {
+    const f = vi.fn().mockResolvedValue(ok([place()]));
+    vi.stubGlobal("fetch", f);
+    const res = await request(app).post("/api/geo/reverse").send({ latitude: 28.43, longitude: 77.1 }).expect(200);
+    expect(res.body).toMatchObject({ line1: "12 MG Road", area: "Sector 54", city: "Gurugram", state: "Haryana", pincode: "122018" });
+    expect(String(f.mock.calls[0][0])).toMatch(/\/v1\/geocode\/reverse\?.*lat=28\.43&lon=77\.1/);
+    expect(JSON.stringify(res.body)).not.toContain("test-key");
     await request(app).post("/api/geo/reverse").send({ latitude: 91, longitude: 0 }).expect(400);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429 }));
-    expect((await request(app).post("/api/geo/reverse").send({ latitude: 28.43, longitude: 77.1 }).expect(502)).body.error).toMatch(/enter it manually/);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    const err = (await request(app).post("/api/geo/reverse").send({ latitude: 28.43, longitude: 77.1 }).expect(502)).body.error;
+    expect(err).toMatch(/enter it manually/);
+    expect(err).not.toContain("test-key");
+  }));
+  it("does not name an amenity as the street, and returns an empty address when nothing is known", withKey(async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(ok([{ name: "The Oberoi", result_type: "amenity", city: "Gurugram", county: "Gurugram", state: "Haryana", formatted: "The Oberoi, Gurugram, India" }])));
+    expect((await request(app).post("/api/geo/reverse").send({ latitude: 28.4595, longitude: 77.0266 }).expect(200)).body).toMatchObject({ line1: null, city: "Gurugram", pincode: null });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(ok([])));
+    expect((await request(app).post("/api/geo/reverse").send({ latitude: 28.43, longitude: 77.1 }).expect(200)).body).toMatchObject({ line1: null, state: null, pincode: null });
+  }));
+  it("searches addresses and PIN codes (India only, max 5), validates the query and returns coordinates", withKey(async () => {
+    const f = vi.fn().mockResolvedValue(ok([place(), place({ lat: undefined })]));
+    vi.stubGlobal("fetch", f);
+    const res = await request(app).post("/api/geo/search").send({ query: "MG Road Gurugram" }).expect(200);
+    expect(res.body.results).toHaveLength(1); // the result without coordinates is dropped
+    expect(res.body.results[0]).toMatchObject({ latitude: 28.431234, longitude: 77.101235, pincode: "122018" });
+    expect(decodeURIComponent(String(f.mock.calls[0][0]))).toContain("filter=countrycode:in");
+    await request(app).post("/api/geo/search").send({ query: "122018" }).expect(200);
+    expect(decodeURIComponent(String(f.mock.calls[1][0]))).toContain("text=122018");
+    await request(app).post("/api/geo/search").send({ query: "ab" }).expect(400);
+  }));
+  it("reports address lookup as not set up without the Geoapify key", async () => {
+    await request(app).post("/api/geo/search").send({ query: "MG Road" }).expect(503);
+    await request(app).post("/api/geo/reverse").send({ latitude: 28.43, longitude: 77.1 }).expect(503);
   });
 });
 

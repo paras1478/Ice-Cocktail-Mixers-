@@ -29,6 +29,41 @@ describe("currentFix", () => {
     }
   });
 
+  it("keeps listening after a rough first fix and returns the best (most accurate) reading", async () => {
+    vi.useFakeTimers();
+    try {
+      let watcher: Ok = () => {};
+      const clearWatch = vi.fn();
+      Object.defineProperty(navigator, "geolocation", { configurable: true, value: {
+        getCurrentPosition: (ok: Ok) => ok(pos(25.609, 85.1343, 200000)),
+        watchPosition: vi.fn((ok: Ok) => { watcher = ok; return 7; }), clearWatch,
+      } });
+      const p = currentFix(10_000);
+      await vi.advanceTimersByTimeAsync(1000);
+      watcher(pos(25.5941, 85.1376, 4000)); // better, but not good enough to stop
+      watcher(pos(25.6, 85.14, 9000)); // worse readings are ignored
+      await vi.advanceTimersByTimeAsync(1000);
+      watcher(pos(25.5946, 85.1372, 35)); // good: stops listening at once
+      expect(await p).toEqual({ latitude: 25.5946, longitude: 85.1372, accuracy: 35 });
+      expect(clearWatch).toHaveBeenCalledWith(7);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("returns the rough fix as it is when nothing better arrives, and skips refining when the first fix is already good", async () => {
+    vi.useFakeTimers();
+    try {
+      const watch = vi.fn(() => 3);
+      Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: (ok: Ok) => ok(pos(25.609, 85.1343, 200000)), watchPosition: watch, clearWatch: vi.fn() } });
+      const p = currentFix(5000);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(await p).toEqual({ latitude: 25.609, longitude: 85.1343, accuracy: 200000 }); // never presented as precise
+      watch.mockClear();
+      Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: (ok: Ok) => ok(pos(28.43, 77.1, 12)), watchPosition: watch, clearWatch: vi.fn() } });
+      expect((await currentFix(5000)).accuracy).toBe(12);
+      expect(watch).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("does not retry after a permission denial, and reports the specific reason otherwise", async () => {
     const denied = setGeo((_ok, err) => err({ code: 1 }));
     await expect(currentFix()).rejects.toMatchObject({ reason: "denied" });
@@ -80,7 +115,7 @@ describe("approximate (network / IP based) positions", () => {
     const note = accuracyNote(200_000)!;
     expect(note).toMatch(/Very approximate/);
     expect(note).toMatch(/not GPS/);
-    expect(note).toMatch(/drag the pin/i);
+    expect(note).toMatch(/tap the map/i);
   });
 
   it("always asks for a fresh reading (maximumAge 0), also in the network fallback, and keeps the browser's own accuracy value", async () => {

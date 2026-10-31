@@ -55,7 +55,7 @@ export function SearchBar() {
         <label htmlFor="site-search" className="sr-only">Search products</label>
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
         <input
-          id="site-search" type="search" value={q} autoComplete="off" placeholder="Search ice, tonic, soda, bitters…"
+          id="site-search" type="search" value={q} autoComplete="off" placeholder="Search ice, mixers…"
           role="combobox" aria-expanded={open && items.length > 0} aria-controls={listId} aria-autocomplete="list"
           onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
           onKeyDown={(e) => {

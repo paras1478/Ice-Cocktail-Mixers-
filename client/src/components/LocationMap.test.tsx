@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 import LocationMap from "./LocationMap";
 
+// The map needs a tile key to render; the real value comes from VITE_GEOAPIFY_API_KEY (not read in tests).
+vi.mock("../lib/geoapify", () => ({ GEOAPIFY_KEY: "test", TILE_URL: "/tiles/{z}/{x}/{y}.png", TILE_ATTRIBUTION: "tiles", MAP_UNAVAILABLE: "not set up" }));
+
 // Real Leaflet in jsdom (no layout, no tiles): enough to check the pin is created and removed with the coordinates it is given.
 // Pixel positions need a real browser; the pin's position follows setLatLng(latitude, longitude) (see manual checks).
 const markers = (c: HTMLElement) => c.querySelectorAll(".leaflet-marker-icon");

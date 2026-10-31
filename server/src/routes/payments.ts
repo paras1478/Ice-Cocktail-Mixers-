@@ -144,6 +144,10 @@ export async function razorpayWebhook(req: Request, res: Response) {
   } catch {
     return void res.status(400).json({ error: "Invalid payload" });
   }
+  // A retried delivery carries the same event id: acknowledge it without reprocessing. The id is stored only AFTER successful processing,
+  // so a delivery that failed midway is retried by Razorpay and processed then. (State changes are also idempotent on their own.)
+  const eventId = req.header("x-razorpay-event-id")?.slice(0, 100);
+  if (eventId && (await prisma.webhookEvent.findUnique({ where: { id: eventId } }))) return void res.json({ ok: true, duplicate: true });
   const entity = event.payload?.payment?.entity;
   if (entity && (event.event === "payment.captured" || event.event === "order.paid" || event.event === "payment.failed")) {
     try {
@@ -163,5 +167,6 @@ export async function razorpayWebhook(req: Request, res: Response) {
       return void res.status(500).json({ error: "Processing failed" });
     }
   }
+  if (eventId) await prisma.webhookEvent.create({ data: { id: eventId, event: String(event.event ?? "").slice(0, 60) } }).catch(() => undefined); // a concurrent duplicate already stored it
   res.json({ ok: true });
 }

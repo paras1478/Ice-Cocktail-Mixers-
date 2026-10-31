@@ -1,6 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
+import { AttributionControl, Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import { GEOAPIFY_KEY, MAP_UNAVAILABLE, TILE_ATTRIBUTION, TILE_URL } from "../lib/geoapify";
 
 interface Props {
   /** The selected position. null = nothing selected yet: the map shows `view` as a plain temporary map view with no pin. */
@@ -26,66 +28,78 @@ const pin = L.divIcon({
 
 const round6 = (n: number) => Number(n.toFixed(6));
 
+/** Click / tap anywhere to place the pin (the only way to choose a spot far from a rough position, where dragging is impractical). */
+function ClickToPlace({ onMove }: { onMove?: Props["onMove"] }) {
+  const map = useMapEvents({
+    click: (e) => {
+      if (!onMove) return;
+      map.scrollWheelZoom.enable(); // wheel zoom is switched on only after the customer interacts, so the page still scrolls normally
+      onMove(round6(e.latlng.lat), round6(e.latlng.lng));
+    },
+    mouseout: () => map.scrollWheelZoom.disable(),
+  });
+  return null;
+}
+
+/** Re-measures the map when its container changes size (modal, step change) so the tiles fill it. */
+function KeepSized() {
+  const map = useMap();
+  useEffect(() => {
+    const t = setTimeout(() => map.invalidateSize(), 0);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => map.invalidateSize()) : null;
+    ro?.observe(map.getContainer());
+    return () => { clearTimeout(t); ro?.disconnect(); };
+  }, [map]);
+  return null;
+}
+
+/** Keeps the view in step with the pin: a rough fix is shown zoomed out so the whole uncertainty area is visible, a precise one close up. */
+function Follow({ at, accuracy }: { at: L.LatLngTuple; accuracy?: number | null }) {
+  const map = useMap();
+  const [lat, lng] = at;
+  useEffect(() => {
+    if (accuracy && accuracy > 1000) map.fitBounds(L.latLng(lat, lng).toBounds(accuracy * 2), { padding: [12, 12], maxZoom: 15 });
+    else map.setView([lat, lng], Math.max(map.getZoom(), 16));
+  }, [map, lat, lng, accuracy]);
+  return null;
+}
+
 /**
  * Map with at most one pin at [latitude, longitude] (Leaflet takes latitude first). The pin follows the coordinates it is given,
  * so it re-centres whenever they change, and with `onMove` the customer can place it by clicking the map or dragging it.
- * OpenStreetMap tiles: no API key needed.
+ * Tiles come from Geoapify (OpenStreetMap data).
  */
 export default function LocationMap({ latitude, longitude, accuracy, onMove, view, label = "Map showing the selected location", className = "h-56 sm:h-72" }: Props) {
-  const el = useRef<HTMLDivElement>(null);
-  const map = useRef<L.Map | null>(null);
-  const marker = useRef<L.Marker | null>(null);
-  const circle = useRef<L.Circle | null>(null);
   const moved = useRef(onMove);
   moved.current = onMove;
+  const at: L.LatLngTuple | null = latitude !== null && longitude !== null ? [latitude, longitude] : null;
+  const start = useRef<{ center: L.LatLngTuple; zoom: number }>(at ? { center: at, zoom: 17 } : { center: view ? [view.latitude, view.longitude] : [20.5937, 78.9629], zoom: view?.zoom ?? 5 });
+  const handlers = useMemo(() => ({
+    dragend: (e: L.LeafletEvent) => {
+      const p = (e.target as L.Marker).getLatLng();
+      moved.current?.(round6(p.lat), round6(p.lng)); // the marker's real position, never the initial one
+    },
+  }), []);
 
-  // Create the map once.
-  useEffect(() => {
-    if (!el.current) return;
-    const start: L.LatLngExpression = latitude !== null && longitude !== null ? [latitude, longitude] : view ? [view.latitude, view.longitude] : [20.5937, 78.9629];
-    const m = L.map(el.current, { center: start, zoom: latitude !== null ? 17 : view?.zoom ?? 5, scrollWheelZoom: false });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(m);
-    // Click / tap anywhere to place the pin (the only way to choose a spot far from a rough position, where dragging is impractical).
-    m.on("click", (e: L.LeafletMouseEvent) => {
-      m.scrollWheelZoom.enable(); // wheel zoom is switched on only after the customer interacts, so the page still scrolls normally
-      moved.current?.(round6(e.latlng.lat), round6(e.latlng.lng));
-    });
-    m.on("mouseout", () => m.scrollWheelZoom.disable());
-    map.current = m;
-    // The container may still be laying out (modal, step change): re-measure so the tiles fill it and the centre is right.
-    const t = setTimeout(() => m.invalidateSize(), 0);
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => m.invalidateSize()) : null;
-    ro?.observe(el.current);
-    return () => { clearTimeout(t); ro?.disconnect(); m.remove(); map.current = null; marker.current = null; circle.current = null; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Keep the pin (and the view) in step with the coordinates, using the values from this render (no stale state).
-  useEffect(() => {
-    const m = map.current;
-    if (!m) return;
-    circle.current?.remove();
-    circle.current = null;
-    if (latitude === null || longitude === null) {
-      marker.current?.remove();
-      marker.current = null;
-      return;
-    }
-    const at: L.LatLngExpression = [latitude, longitude];
-    if (!marker.current) {
-      const mk = L.marker(at, { icon: pin, draggable: !!moved.current, keyboard: false, alt: "Selected location" }).addTo(m);
-      mk.on("dragend", () => {
-        const p = mk.getLatLng();
-        moved.current?.(round6(p.lat), round6(p.lng)); // the marker's real position, never the initial one
-      });
-      marker.current = mk;
-    } else marker.current.setLatLng(at);
-    // interactive:false so the uncertainty circle never swallows clicks meant for placing the pin
-    circle.current = accuracy && accuracy > 50 ? L.circle(at, { radius: accuracy, color: "#d97706", weight: 1, fillOpacity: 0.12, interactive: false }).addTo(m) : null;
-    // A rough fix is shown zoomed out so the whole uncertainty area is visible; a precise one is shown close up.
-    if (circle.current && accuracy && accuracy > 1000) m.fitBounds(circle.current.getBounds(), { padding: [12, 12], maxZoom: 15 });
-    else m.setView(at, Math.max(m.getZoom(), 16));
-  }, [latitude, longitude, accuracy]);
-
-  return <div ref={el} role="img" aria-label={label} data-testid="location-map" className={`z-0 w-full overflow-hidden rounded-xl border border-line ${className}`} />;
+  if (!GEOAPIFY_KEY) {
+    return <div role="alert" data-testid="location-map-error" className={`flex w-full items-center justify-center rounded-xl border border-line bg-tint p-4 text-center text-sm font-semibold text-warn ${className}`}>{MAP_UNAVAILABLE}</div>;
+  }
+  return (
+    <div role="img" aria-label={label} data-testid="location-map" className={`z-0 w-full overflow-hidden rounded-xl border border-line ${className}`}>
+      <MapContainer center={start.current.center} zoom={start.current.zoom} scrollWheelZoom={false} attributionControl={false} className="h-full w-full">
+        <TileLayer maxZoom={19} url={TILE_URL} attribution={TILE_ATTRIBUTION} />
+        <AttributionControl prefix={false} /> {/* only the tile credits (Geoapify / OpenStreetMap), no library label */}
+        <KeepSized />
+        <ClickToPlace onMove={onMove} />
+        {at && (
+          <>
+            <Marker position={at} icon={pin} draggable={!!onMove} keyboard={false} alt="Selected location" eventHandlers={handlers} />
+            {/* interactive:false so the uncertainty circle never swallows clicks meant for placing the pin */}
+            {accuracy && accuracy > 50 && <Circle center={at} radius={accuracy} pathOptions={{ color: "#d97706", weight: 1, fillOpacity: 0.12 }} interactive={false} />}
+            <Follow at={at} accuracy={accuracy} />
+          </>
+        )}
+      </MapContainer>
+    </div>
+  );
 }

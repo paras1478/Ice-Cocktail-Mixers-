@@ -78,26 +78,49 @@ export interface ReverseGeocode {
   displayName: string | null;
 }
 
-/** Optional reverse geocoding for the customer's GPS position (OpenStreetMap Nominatim by default). */
-export async function reverseGeocode(lat: number, lng: number): Promise<ReverseGeocode> {
-  let body: { display_name?: string; address?: Record<string, string> };
+interface GeoapifyResult { housenumber?: string; street?: string; name?: string; suburb?: string; district?: string; neighbourhood?: string; city?: string; town?: string; village?: string; county?: string; state_district?: string; state?: string; postcode?: string; formatted?: string; result_type?: string; lat?: number; lon?: number }
+
+const NOT_SET_UP = "Address lookup is not set up yet. Tap the map or enter the address manually.";
+
+// Geoapify (OpenStreetMap based) answers both "which address is at this pin?" and "where is this address?". The key stays on the server.
+async function geoapify(path: string, params: Record<string, string>): Promise<GeoapifyResult[]> {
+  if (!env.GEOAPIFY_API_KEY) throw new HttpError(503, NOT_SET_UP);
   try {
-    const url = `${env.REVERSE_GEOCODE_URL}?format=jsonv2&addressdetails=1&zoom=18&lat=${lat}&lon=${lng}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { "User-Agent": env.GEOCODER_USER_AGENT, Accept: "application/json" } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    body = (await res.json()) as typeof body;
+    const res = await fetch(`${env.GEOAPIFY_URL}${path}?${new URLSearchParams({ format: "json", lang: "en", ...params, apiKey: env.GEOAPIFY_API_KEY })}`, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`); // the URL (which holds the key) is never put in the message
+    const body = (await res.json()) as { results?: GeoapifyResult[] };
+    return Array.isArray(body.results) ? body.results : [];
   } catch (e) {
-    throw new HttpError(502, `Could not turn your location into an address (${e instanceof Error ? e.message : "error"}). You can enter it manually.`);
+    throw new HttpError(502, `Could not reach the address service (${e instanceof Error ? e.message : "error"}). You can enter it manually.`);
   }
-  const a = body.address ?? {};
-  const pincode = a.postcode && /^[1-9]\d{5}$/.test(a.postcode.replace(/\s/g, "")) ? a.postcode.replace(/\s/g, "") : null;
+}
+
+function fromGeoapify(r: GeoapifyResult = {}): ReverseGeocode {
+  const pin = r.postcode?.replace(/\s/g, "") ?? "";
+  const road = r.street ?? (r.result_type === "street" ? r.name : undefined);
+  const city = r.city ?? r.town ?? r.village ?? null;
   return {
-    line1: [a.house_number, a.road].filter(Boolean).join(" ") || null,
-    area: a.suburb ?? a.neighbourhood ?? a.village ?? null,
-    city: a.city ?? a.town ?? a.village ?? a.county ?? null,
-    district: a.state_district ?? a.county ?? null,
-    state: a.state ?? null,
-    pincode,
-    displayName: body.display_name ?? null,
+    line1: [r.housenumber, road].filter(Boolean).join(" ") || null,
+    area: r.suburb ?? r.neighbourhood ?? r.district ?? null,
+    city: city ?? r.county ?? null,
+    district: r.county ?? r.state_district ?? city,
+    state: r.state ?? null,
+    pincode: /^[1-9]\d{5}$/.test(pin) ? pin : null,
+    displayName: r.formatted ?? null,
   };
+}
+
+export interface PlaceMatch extends ReverseGeocode { latitude: number; longitude: number }
+
+/** Address / PIN search (forward geocoding), India only. */
+export async function searchPlaces(query: string): Promise<PlaceMatch[]> {
+  const results = await geoapify("/v1/geocode/search", { text: query.trim(), filter: "countrycode:in", limit: "5" });
+  return results.flatMap((r) => (typeof r.lat === "number" && typeof r.lon === "number" && Number.isFinite(r.lat) && Number.isFinite(r.lon)
+    ? [{ ...fromGeoapify(r), latitude: Number(r.lat.toFixed(6)), longitude: Number(r.lon.toFixed(6)) }] : []));
+}
+
+/** Reverse geocoding for the customer's pin (the nearest address). Fields it can't determine are null. */
+export async function reverseGeocode(lat: number, lng: number): Promise<ReverseGeocode> {
+  const [hit] = await geoapify("/v1/geocode/reverse", { lat: String(lat), lon: String(lng) });
+  return fromGeoapify(hit);
 }

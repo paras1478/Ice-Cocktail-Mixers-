@@ -51,7 +51,7 @@ export function createApp() {
     }),
   );
   // The webhook signature covers the exact raw bytes, so it must be parsed before express.json() touches the body.
-  app.post("/api/payments/razorpay/webhook", express.raw({ type: "*/*", limit: "100kb" }), razorpayWebhook);
+  app.post(["/api/payments/razorpay/webhook", "/api/webhooks/razorpay"], express.raw({ type: "*/*", limit: "100kb" }), razorpayWebhook);
   app.use(express.json({ limit: "100kb" }));
   app.use(cookieParser());
   if (env.NODE_ENV !== "test") {

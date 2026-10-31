@@ -209,6 +209,30 @@ describe("GPS location", () => {
     await waitFor(() => expect(screen.getByText(/permission was denied/)).toBeInTheDocument());
     expect(state_().latitude).toBeNull();
   });
+  it("searches an address, shows matches, and only fills the form once the picked match is confirmed", async () => {
+    get.mockResolvedValue({ data: { pincode: "122018", postal: { status: "not_found" }, delivery: { serviceable: false, pincode: "122018", reason: "not_covered" } } });
+    post.mockResolvedValue({ data: { results: [{ latitude: 28.4312, longitude: 77.1012, line1: "12 MG Road", area: "Sector 54", city: "Gurugram", district: "Gurugram", state: "Haryana", pincode: "122018", displayName: "12 MG Road, Sector 54, Gurugram 122018" }] } });
+    render(<Harness />);
+    fireEvent.change(screen.getByLabelText("Search delivery address"), { target: { value: "MG Road Gurugram" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
+    expect(post).toHaveBeenCalledWith("/geo/search", { query: "MG Road Gurugram" });
+    fireEvent.click(await screen.findByRole("button", { name: /12 MG Road, Sector 54/ }));
+    expect(state_().latitude).toBeNull(); // picking only places the pin for review
+    expect(await screen.findByTestId("location-map")).toHaveAttribute("data-lat", "28.4312");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delivery location" }));
+    await waitFor(() => expect(state_()).toMatchObject({ latitude: 28.4312, longitude: 77.1012, pincode: "122018", district: "Gurugram", state: "Haryana" }));
+  });
+  it("shows the search error (e.g. not set up) and rejects too-short queries without calling the server", async () => {
+    post.mockRejectedValue({ message: "Address search is not set up yet." });
+    render(<Harness />);
+    fireEvent.change(screen.getByLabelText("Search delivery address"), { target: { value: "ab" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
+    expect(await screen.findByText(/at least 3 characters/)).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Search delivery address"), { target: { value: "MG Road" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
+    expect(await screen.findByText(/not set up yet/)).toBeInTheDocument();
+  });
   it("fills the form only after the customer confirms the detected address, and keeps the coordinates", async () => {
     Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: (ok: (p: unknown) => void) => ok({ coords: { latitude: 28.4312, longitude: 77.1012 } }) } });
     get.mockResolvedValue({ data: { pincode: "122018", postal: { status: "not_found" }, delivery: { serviceable: false, pincode: "122018", reason: "not_covered" } } });
@@ -217,7 +241,7 @@ describe("GPS location", () => {
     fireEvent.click(screen.getByRole("button", { name: /current location/i }));
     await screen.findByTestId("gps-found");
     expect(state_().district).toBe(""); // nothing filled yet
-    fireEvent.click(screen.getByRole("button", { name: "Use this address" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delivery location" }));
     await waitFor(() => expect(state_().district).toBe("Gurgaon"));
     expect(state_()).toMatchObject({ latitude: 28.4312, longitude: 77.1012, pincode: "122018", area: "Sector 54" });
   });
@@ -227,8 +251,8 @@ describe("GPS location", () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: /current location/i }));
     await screen.findByTestId("gps-found");
-    expect(screen.queryByRole("button", { name: "Use this address" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Use pin only" }));
+    expect(screen.queryByRole("button", { name: "Confirm delivery location" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm pin only" }));
     await waitFor(() => expect(state_().latitude).toBe(28.5));
   });
 });
@@ -245,7 +269,7 @@ describe("map pin", () => {
     expect(map).toHaveAttribute("data-lng", "77.1012");
     expect(post).toHaveBeenCalledWith("/geo/reverse", { latitude: 28.4312, longitude: 77.1012 }); // the address belongs to these coordinates
     expect(screen.getByText(/Approximate location/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Use pin only" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm pin only" }));
     await waitFor(() => expect(state_()).toMatchObject({ latitude: 28.4312, longitude: 77.1012 }));
     expect(screen.getAllByTestId("location-map")[0]).toHaveAttribute("data-lat", "28.4312"); // the saved pin is shown on the map too
   });
@@ -257,7 +281,7 @@ describe("map pin", () => {
     fireEvent.click(screen.getByRole("button", { name: /current location/i }));
     await screen.findByTestId("gps-found");
     expect(screen.getByText(/outside India/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Use pin only" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm pin only" })).toBeNull();
     expect(post).not.toHaveBeenCalled();
   });
 
@@ -278,10 +302,10 @@ describe("rough (network / IP based) location", () => {
     await screen.findByTestId("gps-found");
     expect(screen.getByTestId("gps-coords")).toHaveTextContent("Latitude 25.6093, longitude 85.1235 · accuracy ±200 km");
     expect(screen.getByText(/Very approximate/)).toHaveTextContent(/not GPS/);
-    expect(screen.getByTestId("location-map")).toHaveAttribute("data-lat", "25.6093");
+    expect(screen.getByTestId("location-map")).toHaveAttribute("data-lat", ""); // the area is shown, but no pin is placed on a city-level guess
     expect(post).not.toHaveBeenCalled(); // no reverse lookup: it would only name a landmark near the city centre
-    expect(screen.queryByRole("button", { name: "Use this address" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Use pin only" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm delivery location" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm pin only" })).toBeNull();
     expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
   });
 });
@@ -289,7 +313,7 @@ describe("rough (network / IP based) location", () => {
 describe("choosing the delivery spot manually (never a hardcoded location)", () => {
   const patnaFix = () => Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: (ok: (p: unknown) => void) => ok({ coords: { latitude: 25.609, longitude: 85.1343, accuracy: 200000 } }) } });
 
-  it("after a rough fix, tapping the map sets the pin, the address is looked up for the TAPPED coordinates, and Use this address saves exactly those", async () => {
+  it("after a rough fix, tapping the map sets the pin, the address is looked up for the TAPPED coordinates, and Confirm delivery location saves exactly those", async () => {
     patnaFix();
     get.mockResolvedValue({ data: { pincode: "122001", postal: { status: "not_found" }, delivery: { serviceable: false, pincode: "122001", reason: "not_covered" } } });
     post.mockReset();
@@ -303,11 +327,11 @@ describe("choosing the delivery spot manually (never a hardcoded location)", () 
     await waitFor(() => expect(post).toHaveBeenCalledWith("/geo/reverse", { latitude: 28.4595, longitude: 77.0266 })); // the new coordinates, not 25.609 / 85.1343
     expect(screen.getByTestId("gps-coords")).toHaveTextContent("Latitude 28.4595, longitude 77.0266");
     expect(screen.getByTestId("location-map")).toHaveAttribute("data-lat", "28.4595");
-    fireEvent.click(await screen.findByRole("button", { name: "Use this address" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm delivery location" }));
     await waitFor(() => expect(state_()).toMatchObject({ latitude: 28.4595, longitude: 77.0266, line1: "7 Golf Course Road, Sector 42", area: "Sector 42", district: "Gurgaon", state: "Haryana", pincode: "122002" }));
   });
 
-  it("Use this address replaces an older address with the one found at the selected pin, keeping house number and phone", async () => {
+  it("Confirm delivery location replaces an older address with the one found at the selected pin, keeping house number and phone", async () => {
     Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: (ok: (p: unknown) => void) => ok({ coords: { latitude: 28.43, longitude: 77.1, accuracy: 15 } }) } });
     get.mockResolvedValue({ data: { pincode: "400001", postal: { status: "not_found" }, delivery: { serviceable: false, pincode: "400001", reason: "not_covered" } } });
     post.mockReset();
@@ -315,7 +339,7 @@ describe("choosing the delivery spot manually (never a hardcoded location)", () 
     render(<Harness initial={{ ...emptyAddress, house: "12B", phone: "9876543210", line1: "Old Street", area: "Old Area", district: "Mumbai", state: "Maharashtra", pincode: "400001" }} />);
     fireEvent.click(screen.getByRole("button", { name: /current location/i }));
     await screen.findByTestId("gps-found");
-    fireEvent.click(await screen.findByRole("button", { name: "Use this address" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm delivery location" }));
     await waitFor(() => expect(state_().pincode).toBe("122002"));
     expect(state_()).toMatchObject({ house: "12B", phone: "9876543210", line1: "7 Golf Course Road, Sector 42", district: "Gurgaon", state: "Haryana", latitude: 28.43, longitude: 77.1 });
   });
@@ -335,7 +359,7 @@ describe("choosing the delivery spot manually (never a hardcoded location)", () 
     fireEvent.click(screen.getByRole("button", { name: "mock-tap-map" }));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/geo/reverse", { latitude: 28.4595, longitude: 77.0266 }));
     expect(getCurrentPosition).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByRole("button", { name: "Use pin only" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm pin only" }));
     await waitFor(() => expect(state_()).toMatchObject({ latitude: 28.4595, longitude: 77.0266 }));
   });
 });

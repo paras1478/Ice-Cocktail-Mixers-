@@ -16,8 +16,9 @@
   --accent: #8f5410;
   --action: #2a1c14;
   --on-action: #fbf3e3;
-  --add: #b8741a;
+  --add: #9a5c0e;         /* white text on this is 5.6:1 (was 3.6:1) */
   --on-add: #ffffff;
+  --img-well: #f3e9d8;    /* backdrop behind product photos, the same in both themes so photos look consistent */
   --badge: #e8a951;
   --badge-ink: #2a1c14;
   --danger: #b3261e;
@@ -45,6 +46,7 @@
   --on-action: #211811;
   --add: #d6a04a;
   --on-add: #211811;
+  --img-well: #f3e9d8;
   --badge: #d6a04a;
   --badge-ink: #211811;
   --danger: #ff8f86;
@@ -111,14 +113,16 @@ select.input { padding-right: 2rem; }
 .btn-dark { background: var(--ink); color: var(--canvas); }
 .btn-ghost { background: transparent; color: var(--ink); border-color: var(--line); }
 .btn-ghost:hover:not(:disabled) { border-color: var(--accent); background: var(--tint); }
-.btn-add { background: var(--surface); color: var(--accent); border-color: var(--add); min-height: 2.5rem; }
-.btn-add:hover:not(:disabled) { background: var(--add); color: var(--on-add); }
+.btn-add { background: var(--add); color: var(--on-add); border-color: var(--add); min-height: 2.5rem; }
+.btn-add:hover:not(:disabled) { opacity: 0.9; }
+.img-well { background: var(--img-well); }
 .btn-add-solid { background: var(--add); color: var(--on-add); }
 .btn-primary:hover:not(:disabled), .btn-dark:hover:not(:disabled), .btn-add-solid:hover:not(:disabled) { opacity: 0.92; }
 .btn-primary:active:not(:disabled), .btn-add:active:not(:disabled), .btn-add-solid:active:not(:disabled) { transform: scale(0.98); }
 button:disabled, .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 
+@media (max-width: 767px) { body.has-buy-bar { padding-bottom: 4.75rem; } }
 .skeleton { border-radius: 0.75rem; background: linear-gradient(90deg, var(--tint) 25%, var(--secondary) 50%, var(--tint) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 .rise { animation: rise 0.22s ease-out; }

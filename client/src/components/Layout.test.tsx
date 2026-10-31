@@ -34,6 +34,15 @@ describe("Layout", () => {
     expect(screen.queryByTestId("cart-count")).toBeNull();
     expect(screen.getByText("Admin")).toBeInTheDocument();
   });
+  it("shows a Deliver-to control in the header with the saved PIN and estimate, and none in admin", () => {
+    at("/");
+    for (const b of screen.getAllByTestId("deliver-to")) expect(b).toHaveTextContent("122018 · 14 min");
+    expect(screen.getAllByRole("button", { name: /Deliver to 122018/ }).length).toBeGreaterThan(0);
+  });
+  it("has no Deliver-to control inside admin routes", () => {
+    at("/admin");
+    expect(screen.queryByTestId("deliver-to")).toBeNull();
+  });
   it("shows the cart count outside admin", () => {
     at("/cart");
     expect(screen.getByTestId("cart-count")).toHaveTextContent("2");

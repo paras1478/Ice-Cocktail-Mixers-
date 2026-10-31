@@ -26,7 +26,7 @@ function DeliveryBanner() {
     <div className="bg-header text-on-header" data-testid="delivery-banner">
       <div className="container-x flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-xs sm:text-sm">
         <p className="flex items-center gap-2"><Clock className="h-4 w-4 shrink-0 text-badge" aria-hidden />{text}</p>
-        <button onClick={loc.openModal} className="inline-flex items-center gap-1 font-semibold text-badge underline underline-offset-2"><MapPin className="h-3.5 w-3.5" aria-hidden />{loc.pincode ? "Change PIN code" : "Enter PIN code"}</button>
+        <button onClick={loc.openModal} className="hidden items-center gap-1 font-semibold text-badge underline underline-offset-2 sm:inline-flex"><MapPin className="h-3.5 w-3.5" aria-hidden />{loc.pincode ? "Change PIN code" : "Enter PIN code"}</button>
       </div>
     </div>
   );
@@ -91,7 +91,21 @@ function LocationModal() {
   );
 }
 
-const iconBtn = "relative grid h-10 w-10 place-items-center rounded-full hover:bg-white/10";
+const iconBtn = "relative grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-white/10 sm:h-10 sm:w-10";
+
+/** Always-visible delivery control in the header: the saved PIN (and estimate when we deliver), or a plain "Enter PIN". Opens the existing PIN dialog. */
+function DeliverTo({ className = "" }: { className?: string }) {
+  const loc = useLocationCtx();
+  const eta = loc.delivery?.serviceable ? ` · ${loc.delivery.etaMinutes} min` : "";
+  return (
+    <button onClick={loc.openModal} data-testid="deliver-to" aria-label={loc.pincode ? `Deliver to ${loc.pincode}. Change PIN code` : "Enter PIN code to check delivery"}
+      className={`${className} min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-white/25 px-3 text-xs font-semibold transition hover:bg-white/10 sm:text-sm`}>
+      <MapPin className="h-4 w-4 text-badge" aria-hidden />
+      <span className="hidden sm:inline opacity-75">Deliver to</span>
+      <span className="font-extrabold">{loc.pincode ? `${loc.pincode}${eta}` : "Enter PIN"}</span>
+    </button>
+  );
+}
 
 function Header({ admin }: { admin: boolean }) {
   const { user, logout } = useAuth();
@@ -100,11 +114,13 @@ function Header({ admin }: { admin: boolean }) {
   const nav = useNavigate();
   return (
     <header className="sticky top-0 z-40 bg-header text-on-header shadow-md">
-      <div className="container-x flex items-center gap-3 py-2.5">
-        <Logo />
+      <div className="container-x flex items-center gap-2 py-2.5 sm:gap-3">
+        {/* Logged in, the header holds up to six icons: on narrow phones only the logo mark is shown so nothing overlaps. */}
+        <div className={`min-w-0 shrink ${user ? "max-[430px]:[&_.font-display]:hidden" : ""}`}><Logo /></div>
         {!admin && <div className="mx-2 hidden max-w-xl flex-1 md:block"><SearchBar /></div>}
+        {!admin && <DeliverTo className="hidden md:inline-flex" />}
         {admin && <span className="chip ml-2 bg-badge text-badge-ink">Admin</span>}
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1">
           <button onClick={toggle} className={iconBtn} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>{theme === "dark" ? <Sun className="h-5 w-5" aria-hidden /> : <Moon className="h-5 w-5" aria-hidden />}</button>
           {user?.role === "ADMIN" && <Link to="/admin" className={iconBtn} aria-label="Admin dashboard"><LayoutDashboard className="h-5 w-5" aria-hidden /></Link>}
           {user ? (
@@ -121,16 +137,16 @@ function Header({ admin }: { admin: boolean }) {
           )}
         </div>
       </div>
-      {!admin && <div className="container-x pb-2.5 md:hidden"><SearchBar /></div>}
+      {!admin && <div className="container-x flex items-center gap-2 pb-2.5 md:hidden"><div className="min-w-0 flex-1"><SearchBar /></div><DeliverTo className="inline-flex" /></div>}
     </header>
   );
 }
 
 function Footer() {
   return (
-    <footer className="mt-16 bg-header text-on-header">
-      <div className="container-x grid gap-8 py-10 text-sm sm:grid-cols-3">
-        <div><Logo /><p className="mt-3 max-w-xs opacity-80">Party ice, craft tonic, club soda, margarita mixes, bitters and citrus garnishes, delivered fast. Delivery times are estimates, not guarantees.</p></div>
+    <footer className="mt-10 bg-header text-on-header sm:mt-16">
+      <div className="container-x grid grid-cols-2 gap-x-6 gap-y-5 py-6 text-sm sm:grid-cols-3 sm:gap-8 sm:py-10">
+        <div className="col-span-2 sm:col-span-1"><Logo /><p className="mt-2 max-w-xs text-xs opacity-80 sm:mt-3 sm:text-sm">Party ice, craft tonic, club soda, margarita mixes, bitters and citrus garnishes, delivered fast. Delivery times are estimates, not guarantees.</p></div>
         <div><h2 className="mb-2 font-sans text-sm font-bold uppercase tracking-wide text-badge">Shop</h2><ul className="space-y-1.5 opacity-90"><li><Link to="/category/ice-bags">Ice bags</Link></li><li><Link to="/category/tonic-water">Tonic water</Link></li><li><Link to="/category/party-bundles">Party bundles</Link></li></ul></div>
         <div><h2 className="mb-2 font-sans text-sm font-bold uppercase tracking-wide text-badge">Help</h2><ul className="space-y-1.5 opacity-90"><li><Link to="/orders">My orders</Link></li><li><Link to="/policy/delivery">Delivery information</Link></li><li><Link to="/policy/returns">Returns &amp; refunds</Link></li><li><Link to="/policy/privacy">Privacy</Link></li><li><Link to="/policy/terms">Terms</Link></li></ul></div>
       </div>

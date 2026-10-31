@@ -28,12 +28,42 @@ const reasonOf = (code: number | undefined): GeoFailure => (code === 1 ? "denied
 const ask = (options: PositionOptions) =>
   new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, (e) => reject(new GeoError(reasonOf(e?.code))), options));
 
+/** A fix at least this precise needs no refinement. */
+export const GOOD_M = 100;
+/** How long to keep listening for a better fix after a rough first one (Wi-Fi / GPS often sharpens within seconds). */
+export const REFINE_MS = 10_000;
+
+/**
+ * A first fix on a laptop is often network / IP based and hundreds of km off. Keep listening for a short while and use the best reading;
+ * a position that never improves is returned as it is (and the caller labels it approximate).
+ */
+function refine(first: GeolocationPosition, ms: number): Promise<GeolocationPosition> {
+  const geo = navigator.geolocation;
+  if (first.coords.accuracy <= GOOD_M || typeof geo.watchPosition !== "function") return Promise.resolve(first);
+  return new Promise((resolve) => {
+    let best = first;
+    let done = false;
+    let id: number | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (id !== undefined) geo.clearWatch(id);
+      resolve(best);
+    };
+    id = geo.watchPosition((p) => { if (p.coords.accuracy < best.coords.accuracy) best = p; if (best.coords.accuracy <= GOOD_M) finish(); }, finish, { enableHighAccuracy: true, maximumAge: 0, timeout: ms });
+    if (done) geo.clearWatch(id);
+    else timer = setTimeout(finish, ms);
+  });
+}
+
 /**
  * 1) high accuracy (GPS on phones), always a fresh reading;
  * 2) if that times out or is unavailable (typical on laptops without GPS), one attempt with network positioning, which is far more likely to answer.
  * A permission denial is final and is not retried.
  */
-export async function currentFix(): Promise<Fix> {
+export async function currentFix(refineMs = REFINE_MS): Promise<Fix> {
   if (typeof navigator === "undefined" || !navigator.geolocation) throw new GeoError("unsupported");
   if (typeof window !== "undefined" && window.isSecureContext === false) throw new GeoError("insecure");
   let pos: GeolocationPosition;
@@ -43,6 +73,7 @@ export async function currentFix(): Promise<Fix> {
     if (!(e instanceof GeoError) || e.reason === "denied") throw e;
     pos = await ask({ enableHighAccuracy: false, timeout: 20_000, maximumAge: 0 }); // never a cached position
   }
+  pos = await refine(pos, refineMs);
   const { latitude, longitude, accuracy } = pos.coords;
   if (import.meta.env?.DEV) console.info("[geolocation] browser returned", { latitude, longitude, accuracy, timestamp: new Date(pos.timestamp || Date.now()).toISOString() });
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) throw new GeoError("unavailable");
@@ -64,7 +95,7 @@ export function describeAccuracy(accuracy: number | null): string {
 /** What the accuracy means for the customer. Never presents a coarse position as GPS-level. */
 export function accuracyNote(accuracy: number | null): string | null {
   if (accuracy === null) return null;
-  if (accuracy > COARSE_M) return `Very approximate location (${describeAccuracy(accuracy)}). Your browser or device gave a network / IP based position, not GPS, so this is only roughly your city. Zoom in and drag the pin to your exact delivery spot, or enter your PIN code below.`;
+  if (accuracy > COARSE_M) return `Very approximate location (${describeAccuracy(accuracy)}). Your browser or device gave a network / IP based position, not GPS, so this is only roughly your city. Search your address or PIN code above, or tap the map on your exact delivery spot.`;
   if (accuracy > 1000) return `Approximate location (${describeAccuracy(accuracy)}), probably from Wi-Fi or your network, not GPS. Drag the pin to your exact spot.`;
   if (accuracy > 150) return `Accuracy ${describeAccuracy(accuracy)}. Drag the pin to your exact spot if needed.`;
   return null;

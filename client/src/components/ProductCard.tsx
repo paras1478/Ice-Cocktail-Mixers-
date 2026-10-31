@@ -17,7 +17,7 @@ export function ProductCard({ product: p }: { product: Product }) {
 
   return (
     <article className="card group relative flex flex-col overflow-hidden p-2.5 transition duration-200 hover:-translate-y-0.5 hover:shadow-lift sm:p-3">
-      <div className={`relative overflow-hidden rounded-xl ${img && !img.isPlaceholder ? "bg-[#f3e9d8]" : "bg-tint"}`}>
+      <div className={`relative overflow-hidden rounded-xl ${img && !img.isPlaceholder ? "img-well" : "bg-tint"}`}>
         <Link to={`/product/${p.slug}`} tabIndex={-1} aria-hidden>
           <ProductImage src={img?.url} alt={img?.alt ?? p.name} sizes="(min-width:1024px) 25vw, 50vw"
             className={`aspect-square w-full transition duration-300 group-hover:scale-105 ${img && !img.isPlaceholder ? "object-contain p-3" : "object-cover"} ${p.inStock ? "" : "opacity-50 grayscale"}`} />
@@ -35,12 +35,12 @@ export function ProductCard({ product: p }: { product: Product }) {
       </div>
 
       <div className="mt-3 flex flex-1 flex-col px-0.5">
-        <p className="text-xs font-medium text-muted">{p.brand ? <><span className="font-bold uppercase tracking-wide">{p.brand}</span> · </> : null}{p.packSize}</p>
-        <h3 className="mt-0.5 line-clamp-2 min-h-[2.5rem] text-sm font-bold leading-5 sm:text-[15px]">
+        <h3 className="line-clamp-2 min-h-[2.5rem] text-sm font-bold leading-5 sm:text-[15px]">
           <Link to={`/product/${p.slug}`} className="after:absolute after:inset-0 after:content-['']">{p.name}</Link>
         </h3>
+        <p className="mt-0.5 text-xs font-medium text-muted">{p.brand ? <><span className="font-bold uppercase tracking-wide">{p.brand}</span> · </> : null}{p.packSize}</p>
         <div className="mt-1.5 flex items-baseline gap-2">
-          <span className="text-base font-extrabold text-accent">{formatMoney(p.priceMinor)}</span>
+          <span className="text-lg font-extrabold text-accent">{formatMoney(p.priceMinor)}</span>
           {p.mrpMinor && p.mrpMinor > p.priceMinor && <span className="text-xs text-muted line-through">{formatMoney(p.mrpMinor)}</span>}
         </div>
         {p.priceStatus === "SAMPLE" && <p className="mt-0.5 text-[11px] font-semibold text-warn">Sample price · unverified</p>}

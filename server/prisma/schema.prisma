@@ -291,6 +291,13 @@ model Payment {
   createdAt   DateTime      @default(now())
 }
 
+// Razorpay webhook deliveries already processed, keyed by the X-Razorpay-Event-Id header, so a retried delivery is acknowledged without being reprocessed.
+model WebhookEvent {
+  id          String   @id // Razorpay's event id
+  event       String
+  processedAt DateTime @default(now())
+}
+
 // Serviceable pincodes with an operator-set ETA. No row means not serviceable.
 // This is delivery coverage; a postal PIN lookup alone never implies serviceability.
 model ServiceArea {

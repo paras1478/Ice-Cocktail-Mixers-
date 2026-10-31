@@ -157,6 +157,15 @@ describe("failures are reported honestly", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(Object.assign(new Error("aborted"), { name: "TimeoutError" })));
     expect((await status("400001")).postal.message).toMatch(/timed out/);
   });
+  it("a slow postal service does not hold back the delivery answer (it is given within a few seconds, without the postal detail)", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined))); // the provider never answers
+    const t = Date.now();
+    const r = await status("110001");
+    expect(Date.now() - t).toBeLessThan(5000);
+    expect(r.postal).toMatchObject({ status: "unavailable" });
+    expect(r.postal.message).toMatch(/timed out/);
+    expect(r.delivery.serviceable).toBe(true);
+  });
   it("HTTP error from the provider", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 503 }));
     expect((await status("400001")).postal.message).toMatch(/HTTP 503/);

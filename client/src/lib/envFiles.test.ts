@@ -30,7 +30,9 @@ describe("frontend environment files", () => {
         if (line.trim().startsWith("#") || !line.includes("=")) continue;
         const [k, v] = [line.split("=")[0], line.slice(line.indexOf("=") + 1)];
         expect(k.startsWith("VITE_"), `${f}: ${k}`).toBe(true);
-        expect(/secret|password|token|private|key|postgres(ql)?:\/\//i.test(k + v), `${f}: ${k}`).toBe(false);
+        // The Geoapify *map tile* key is a public browser key by design (restricted by domain in the Geoapify dashboard); it is the one allowed "key".
+        const text = k === "VITE_GEOAPIFY_API_KEY" ? v : k + v;
+        expect(/secret|password|token|private|key|postgres(ql)?:\/\//i.test(text), `${f}: ${k}`).toBe(false);
       }
     }
   });

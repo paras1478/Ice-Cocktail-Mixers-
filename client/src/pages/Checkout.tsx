@@ -176,7 +176,7 @@ export default function Checkout() {
       <h1 className="text-3xl font-extrabold">Checkout</h1>
       <ol className="mt-4 flex gap-2 overflow-x-auto" aria-label="Checkout steps">
         {STEPS.map((s, i) => (
-          <li key={s} aria-current={i === step ? "step" : undefined} className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${i === step ? "bg-action text-on-action" : i < step ? "bg-secondary text-ink" : "bg-tint text-muted"}`}>
+          <li key={s} aria-current={i === step ? "step" : undefined} className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-center text-[11px] font-bold leading-tight sm:flex-none sm:justify-start sm:gap-2 sm:px-3 sm:text-xs ${i === step ? "bg-action text-on-action" : i < step ? "bg-secondary text-ink" : "bg-tint text-muted"}`}>
             <span>{i + 1}</span>{s}
           </li>
         ))}

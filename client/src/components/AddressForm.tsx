@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Crosshair, MapPin } from "lucide-react";
+import { Crosshair, MapPin, Search } from "lucide-react";
 import { api, apiError } from "../lib/api";
 import { cleanPin, pincodeError } from "../lib/pincode";
 import { mapLink } from "../lib/format";
@@ -58,10 +58,13 @@ export const draftFromRecord = (a: { type: AddressType | null; house: string | n
 
 interface Detected { latitude: number; longitude: number; accuracy?: number | null; outside?: boolean; coarse?: boolean; address?: { line1: string | null; area: string | null; district: string | null; city: string | null; state: string | null; pincode: string | null }; note?: string }
 
+type SearchHit = NonNullable<Detected["address"]> & { latitude: number; longitude: number; displayName: string | null };
+
 /** `onChange` receives a patch, never a whole object, so a slow lookup can't overwrite fields typed in the meantime. */
 export function AddressForm({ value, errors, onChange }: { value: AddressDraft; errors: Record<string, string>; onChange: (patch: Partial<AddressDraft>) => void }) {
   const lookup = usePincodeLookup(value.pincode);
   const [gps, setGps] = useState<{ busy: boolean; error: string | null; found: Detected | null }>({ busy: false, error: null, found: null });
+  const [search, setSearch] = useState<{ q: string; busy: boolean; error: string | null; results: SearchHit[] | null }>({ q: "", busy: false, error: null, results: null });
   const [picking, setPicking] = useState(false); // "Choose on map": a plain map view until the customer taps a spot
   const latest = useRef(value);
   latest.current = value;
@@ -102,7 +105,7 @@ export function AddressForm({ value, errors, onChange }: { value: AddressDraft; 
     }
     if (isCoarse(accuracy)) {
       // A city-level guess is not an address: looking it up would just name a landmark near the city centre, so no address is suggested.
-      if (id === seq.current) setGps({ busy: false, error: null, found: { latitude, longitude, accuracy, coarse: true, note: "We can't suggest an address from such a rough position. Tap the map (or drag the pin) to set your delivery spot and the address will be looked up for that spot." } });
+      if (id === seq.current) setGps({ busy: false, error: null, found: { latitude, longitude, accuracy, coarse: true, note: "We can't suggest an address from such a rough position. Search your address or PIN code above, or tap the map on your exact delivery spot and the address will be looked up for that spot." } });
       return;
     }
     try {
@@ -128,6 +131,27 @@ export function AddressForm({ value, errors, onChange }: { value: AddressDraft; 
     const id = ++seq.current;
     setGps((g) => ({ ...g, found: { latitude, longitude, accuracy: null, note: "Looking up the address for the moved pin…" } }));
     void reverse(latitude, longitude, null, id);
+  };
+  const runSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = search.q.trim();
+    if (q.length < 3) return setSearch((x) => ({ ...x, error: "Type at least 3 characters of the address, area or landmark.", results: null }));
+    setSearch((x) => ({ ...x, busy: true, error: null, results: null }));
+    try {
+      const { data } = await api.post<{ results: SearchHit[] }>("/geo/search", { query: q });
+      setSearch((x) => ({ ...x, busy: false, results: data.results, error: data.results.length ? null : "No matching address in India. Try a nearby landmark or area, or tap the map." }));
+    } catch (err) {
+      setSearch((x) => ({ ...x, busy: false, results: null, error: apiError(err).message }));
+    }
+  };
+  // A search result becomes the selected pin; the customer still confirms it (and can drag it) like a detected location.
+  const pickHit = (h: SearchHit) => {
+    seq.current++;
+    setPicking(false);
+    setSearch((x) => ({ ...x, results: null }));
+    const { latitude, longitude, displayName, ...address } = h;
+    void displayName;
+    setGps({ busy: false, error: null, found: { latitude, longitude, accuracy: null, address } });
   };
   // Nothing is filled until the customer confirms what was detected.
   const useDetected = (d: Detected, withAddress: boolean) => {
@@ -159,6 +183,21 @@ export function AddressForm({ value, errors, onChange }: { value: AddressDraft; 
           <button type="button" className="btn-ghost w-full sm:w-auto" onClick={locate} disabled={gps.busy}><Crosshair className="h-4 w-4" aria-hidden />{gps.busy ? "Locating…" : "Use my current location"}</button>
           <button type="button" className="btn-ghost w-full sm:w-auto" onClick={() => { setGps({ busy: false, error: null, found: null }); setPicking(true); }} aria-expanded={picking}><MapPin className="h-4 w-4" aria-hidden />Choose on map</button>
         </div>
+        <form className="mt-3" role="search" onSubmit={runSearch}>
+          <label htmlFor="addr-search" className="label">Search delivery address</label>
+          <div className="flex gap-2">
+            <input id="addr-search" type="search" className="input min-w-0 flex-1" value={search.q} placeholder="Area, street or landmark" autoComplete="off" onChange={(e) => setSearch((x) => ({ ...x, q: e.target.value }))} />
+            <button type="submit" className="btn-ghost shrink-0" disabled={search.busy}><Search className="h-4 w-4" aria-hidden />{search.busy ? "Searching…" : "Search"}</button>
+          </div>
+          {search.error && <p role="alert" className="mt-1 text-xs font-semibold text-warn">{search.error}</p>}
+          {search.results && search.results.length > 0 && (
+            <ul className="mt-2 divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface text-sm" aria-label="Matching addresses">
+              {search.results.map((h) => (
+                <li key={`${h.latitude},${h.longitude}`}><button type="button" className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-tint" onClick={() => pickHit(h)}><MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{h.displayName ?? [h.line1, h.area, h.city, h.state, h.pincode].filter(Boolean).join(", ")}</button></li>
+              ))}
+            </ul>
+          )}
+        </form>
         {picking && !gps.found && (
           <div className="mt-3" data-testid="pick-map">
             <Suspense fallback={<MapFallback />}>
@@ -168,18 +207,25 @@ export function AddressForm({ value, errors, onChange }: { value: AddressDraft; 
             <button type="button" className="mt-1 text-xs font-semibold underline" onClick={() => setPicking(false)}>Cancel</button>
           </div>
         )}
-        <p className="mt-1.5 text-xs text-muted">Optional. Your browser will ask for permission; we only use your position to help fill this address and we never track you.</p>
+        <p className="mt-1.5 text-xs text-muted">Optional. Your browser asks for permission only when you tap "Use my current location"; we use your position just to fill this address and never track you.</p>
         {gps.error && <p role="alert" className="mt-2 text-xs font-semibold text-warn">{gps.error}</p>}
         {gps.found && (
           <div className="mt-3 rounded-lg border border-line bg-surface p-3 text-sm" data-testid="gps-found">
             {gps.found.address ? <p><b>Detected:</b> {[gps.found.address.line1, gps.found.address.area, gps.found.address.district ?? gps.found.address.city, gps.found.address.state, gps.found.address.pincode].filter(Boolean).join(", ")}</p>
               : <p className="text-warn">{gps.found.note}</p>}
-            {!gps.found.outside && <div className="mt-3"><Suspense fallback={<MapFallback />}><LocationMap latitude={gps.found.latitude} longitude={gps.found.longitude} accuracy={gps.found.accuracy} onMove={moveFound} label="Selected location. Click the map or drag the pin to adjust it." /></Suspense></div>}
-            <p className="mt-1 text-xs text-muted" data-testid="gps-coords">Latitude {gps.found.latitude}, longitude {gps.found.longitude} · accuracy {describeAccuracy(gps.found.accuracy ?? null)}{!gps.found.outside && " · click the map or drag the pin to adjust it"}</p>
+            {!gps.found.outside && (
+              <div className="mt-3"><Suspense fallback={<MapFallback />}>
+                {/* A city-level guess is shown as an area only, with no pin: a pin would claim a spot that is really hundreds of km wide. */}
+                {gps.found.coarse
+                  ? <LocationMap latitude={null} longitude={null} view={{ latitude: gps.found.latitude, longitude: gps.found.longitude, zoom: 9 }} onMove={moveFound} label="Approximate area only. Tap your exact delivery spot to place the pin." />
+                  : <LocationMap latitude={gps.found.latitude} longitude={gps.found.longitude} accuracy={gps.found.accuracy} onMove={moveFound} label="Selected location. Click the map or drag the pin to adjust it." />}
+              </Suspense></div>
+            )}
+            <p className="mt-1 text-xs text-muted" data-testid="gps-coords">Latitude {gps.found.latitude}, longitude {gps.found.longitude} · accuracy {describeAccuracy(gps.found.accuracy ?? null)}{!gps.found.outside && (gps.found.coarse ? " · approximate area only, no pin placed" : " · click the map or drag the pin to adjust it")}</p>
             {accuracyNote(gps.found.accuracy ?? null) && <p className="mt-1 text-xs font-semibold text-warn">{accuracyNote(gps.found.accuracy ?? null)}</p>}
             <div className="mt-2 flex flex-wrap gap-2">
-              {gps.found.address && <button type="button" className="btn-add-solid" onClick={() => useDetected(gps.found!, true)}>Use this address</button>}
-              {!gps.found.outside && !gps.found.coarse && <button type="button" className="btn-ghost" onClick={() => useDetected(gps.found!, false)}>Use pin only</button>}
+              {gps.found.address && <button type="button" className="btn-add-solid" onClick={() => useDetected(gps.found!, true)}>Confirm delivery location</button>}
+              {!gps.found.outside && !gps.found.coarse && <button type="button" className="btn-ghost" onClick={() => useDetected(gps.found!, false)}>Confirm pin only</button>}
               <button type="button" className="btn-ghost" onClick={() => setGps({ busy: false, error: null, found: null })}>Dismiss</button>
             </div>
           </div>

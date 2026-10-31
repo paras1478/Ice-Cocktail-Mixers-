@@ -34,8 +34,9 @@ const schema = z.object({
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(10).optional(),
   ENABLE_COD: z.enum(["true", "false"]).default("true"),
   PINCODE_API_URL: z.string().url().default("https://api.postalpincode.in/pincode"),
-  REVERSE_GEOCODE_URL: z.string().url().default("https://nominatim.openstreetmap.org/reverse"),
-  GEOCODER_USER_AGENT: z.string().default("IceCocktailMixersExpress/1.0"),
+  // Geoapify geocoding (server-side): reverse geocoding (pin -> address) and delivery address / PIN search.
+  GEOAPIFY_API_KEY: z.string().trim().min(1).optional(),
+  GEOAPIFY_URL: z.string().url().default("https://api.geoapify.com"),
   SEED_ADMIN_EMAIL: z.string().email().default("admin@example.com"),
   SEED_ADMIN_PASSWORD: z.string().min(8).default("ChangeMe123!"),
 });
@@ -54,6 +55,8 @@ if (env.NODE_ENV === "production") {
     process.exit(1);
   }
   console.log("[db] DATABASE_URL", JSON.stringify(describeDbUrl(process.env.DATABASE_URL)));
+  // Not fatal (checkout still works with a typed address), but without it address search and pin -> address silently stop working.
+  if (!env.GEOAPIFY_API_KEY) console.warn("[geo] GEOAPIFY_API_KEY is not set: address search and reverse geocoding are disabled. Set it in Render > Environment.");
 }
 export const clientOrigins = (() => {
   try {

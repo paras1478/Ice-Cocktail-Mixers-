@@ -10,7 +10,7 @@ import { optionalAuth, requireAdmin } from "../middleware/auth.js";
 import { isPublic } from "../lib/publish.js";
 import { pricingConfig } from "../services/checkout.js";
 import { serviceability } from "../lib/address.js";
-import { lookupPincode, reverseGeocode } from "../lib/geo.js";
+import { lookupPincode, reverseGeocode, searchPlaces } from "../lib/geo.js";
 
 export const publicRouter = Router();
 export const adminRouter = Router();
@@ -25,7 +25,7 @@ publicRouter.get("/config", (_req, res) => {
     freeDeliveryThresholdMinor: pricingConfig.freeDeliveryThresholdMinor,
     taxRateBps: pricingConfig.taxRateBps,
     payments: { cod: env.ENABLE_COD === "true", card: Boolean(env.STRIPE_SECRET_KEY), online: onlinePaymentsEnabled() },
-    location: { pincodeLookup: true, reverseGeocoding: true },
+    location: { pincodeLookup: true, reverseGeocoding: true, addressSearch: !!env.GEOAPIFY_API_KEY },
   });
 });
 
@@ -56,6 +56,17 @@ const pincodeLimiter = rateLimit({
   message: { error: "Too many PIN code lookups. Please wait a moment and try again." },
 });
 
+// Reverse geocoding and address search use Geoapify credits per request, so they get their own, tighter limit.
+const geoLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: env.NODE_ENV === "test" ? 10_000 : 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many location lookups. Please wait a moment and try again." },
+});
+
+const POSTAL_WAIT_MS = 2500;
+
 publicRouter.get(
   "/pincode/:pin",
   pincodeLimiter,
@@ -63,7 +74,13 @@ publicRouter.get(
     const { pin: pincode } = parse(z.object({ pin }), req.params);
     const delivery = await serviceability(pincode);
     try {
-      const postal = await lookupPincode(pincode);
+      // Delivery (our own table) is already known. The postal lookup is only extra detail, so a slow provider must not hold the answer back:
+      // wait a short while, then answer without it (the lookup keeps running and fills the cache for the next request).
+      let slow: NodeJS.Timeout | undefined;
+      const postal = await Promise.race([
+        lookupPincode(pincode),
+        new Promise<never>((_, reject) => { slow = setTimeout(() => reject(new HttpError(502, "The postal PIN lookup service is slow right now (timed out). You can enter the area, district and state manually.")), POSTAL_WAIT_MS); }),
+      ]).finally(() => clearTimeout(slow));
       res.json({ pincode, postal: postal ? { status: "found", ...postal } : { status: "not_found" }, delivery });
     } catch (e) {
       if (!(e instanceof HttpError)) throw e;
@@ -74,9 +91,19 @@ publicRouter.get(
 
 publicRouter.post(
   "/geo/reverse",
+  geoLimiter,
   ah(async (req, res) => {
     const b = parse(z.object({ latitude: z.number().min(6).max(38), longitude: z.number().min(68).max(98) }), req.body);
     res.json(await reverseGeocode(b.latitude, b.longitude));
+  }),
+);
+
+publicRouter.post(
+  "/geo/search",
+  geoLimiter,
+  ah(async (req, res) => {
+    const b = parse(z.object({ query: z.string().trim().min(3).max(200) }), req.body);
+    res.json({ results: await searchPlaces(b.query) });
   }),
 );
 

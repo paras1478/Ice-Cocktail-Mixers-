@@ -40,7 +40,8 @@ Admin login: `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` (defaults `admin@example
 | `ENABLE_COD` | cash on delivery (card payments are **not implemented**; the UI shows them as unavailable) |
 | `ALLOW_SAMPLE_PRICES` | default true in dev, false in production: with false, products with a SAMPLE price are hidden and cannot be bought |
 | `PINCODE_API_URL` | postal PIN lookup (default India Post public API `https://api.postalpincode.in/pincode`) |
-| `REVERSE_GEOCODE_URL`, `GEOCODER_USER_AGENT` | optional GPS reverse geocoding (default OpenStreetMap Nominatim: set a real contact in the user agent and respect its usage policy) |
+| `GEOAPIFY_API_KEY` | Geoapify key (server only): pin → address and delivery address / PIN search. Without it those lookups answer "not set up" and the customer enters the address manually |
+| `VITE_GEOAPIFY_API_KEY` (client) | Geoapify map-tile key for the location picker (public by design: restrict it to your domains in the Geoapify dashboard; use a different key from the server one) |
 
 ## Delivery, PIN codes and addresses
 

@@ -275,6 +275,41 @@ describe("webhook", () => {
     expect(cb.body.status).toBe("already-paid");
   });
 
+  it("answers on the /api/webhooks/razorpay route too, and a repeated event id is acknowledged without being processed again", async () => {
+    mockRazorpay();
+    const a = await signedUp();
+    const { order, gw } = await placeOnline(a);
+    const id = `evt_${Date.now()}_${n}`;
+    const raw = JSON.stringify(event("payment.captured", { id: `pay_EVT${Date.now()}${n}`, order_id: gw.razorpayOrderId, status: "captured", amount: gw.amountMinor, currency: "INR" }));
+    const send = () => request(app).post("/api/webhooks/razorpay").set("content-type", "application/json").set("x-razorpay-signature", webhookSig(raw)).set("x-razorpay-event-id", id).send(raw);
+    const first = await send();
+    expect(first.status).toBe(200);
+    expect(first.body.duplicate).toBeUndefined();
+    expect((await payRow(order.id)).status).toBe("PAID");
+    expect(await prisma.webhookEvent.findUnique({ where: { id } })).toMatchObject({ event: "payment.captured" });
+    const paidAt = (await payRow(order.id)).paidAt;
+    const second = await send();
+    expect(second.status).toBe(200);
+    expect(second.body.duplicate).toBe(true);
+    expect((await payRow(order.id)).paidAt).toEqual(paidAt);
+  });
+
+  it("an invalid signature is never recorded as a processed event", async () => {
+    mockRazorpay();
+    const id = `evt_bad_${Date.now()}`;
+    const raw = JSON.stringify(event("payment.captured", { id: "pay_BAD", order_id: "order_X", status: "captured", amount: 1, currency: "INR" }));
+    await request(app).post("/api/webhooks/razorpay").set("content-type", "application/json").set("x-razorpay-signature", "f".repeat(64)).set("x-razorpay-event-id", id).send(raw).expect(400);
+    expect(await prisma.webhookEvent.findUnique({ where: { id } })).toBeNull();
+  });
+
+  it("a webhook for a cash-on-delivery order changes nothing", async () => {
+    const a = await signedUp();
+    const o = (await a.post("/api/orders").send(body({ paymentMethod: "COD" })).expect(201)).body.order;
+    const raw = JSON.stringify(event("payment.captured", { id: `pay_COD${Date.now()}`, order_id: "order_NOT_OURS", status: "captured", amount: o.totalMinor, currency: "INR" }));
+    await request(app).post("/api/webhooks/razorpay").set("content-type", "application/json").set("x-razorpay-signature", webhookSig(raw)).send(raw).expect(200);
+    expect(await payRow(o.id)).toMatchObject({ method: "COD", status: "PENDING", providerOrderId: null, providerPaymentId: null });
+  });
+
   it("records failures, ignores wrong amounts and unknown orders, and still answers 200 so Razorpay does not retry", async () => {
     mockRazorpay();
     const a = await signedUp();

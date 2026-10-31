@@ -1,4 +1,4 @@
-import { Package } from "lucide-react";
+import { ChevronDown, Package } from "lucide-react";
 import type { Bundle } from "../lib/types";
 import { formatMoney } from "../lib/format";
 import { useCart } from "../context/CartContext";
@@ -18,7 +18,12 @@ export function BundleGrid({ bundles }: { bundles: Bundle[] }) {
             <div className="text-right"><p className="text-xl font-extrabold text-accent">{formatMoney(b.priceMinor)}</p>
               {b.savingsMinor > 0 && <p className="text-xs"><span className="text-muted line-through">{formatMoney(b.regularMinor)}</span> <span className="font-bold text-ok">Save {formatMoney(b.savingsMinor)}</span></p>}</div>
           </div>
-          <ul className="mt-4 grid gap-2 text-sm">
+          <details className="group mt-3 rounded-xl border border-line px-3 py-2">
+            <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between text-sm font-semibold">
+              <span>What&apos;s included ({b.items.length} item{b.items.length === 1 ? "" : "s"})</span>
+              <ChevronDown className="h-4 w-4 transition group-open:rotate-180" aria-hidden />
+            </summary>
+          <ul className="mt-3 grid gap-2 text-sm">
             {b.items.map((i) => (
               <li key={i.productId} className="flex items-center gap-3">
                 <ProductImage src={i.image} alt={i.name} width={40} height={40} className="h-10 w-10 rounded-lg bg-tint object-cover" />
@@ -27,7 +32,8 @@ export function BundleGrid({ bundles }: { bundles: Bundle[] }) {
               </li>
             ))}
           </ul>
-          <button className="btn-add-solid mt-5 w-full" disabled={!b.inStock}
+          </details>
+          <button className="btn-add-solid mt-4 w-full" disabled={!b.inStock}
             onClick={() => { cart.addMany(b.items.map((i) => ({ productId: i.productId, quantity: i.quantity }))); toast.success(`${b.name} added to cart`); }}>
             {b.inStock ? "Add bundle to cart" : "Some items unavailable"}
           </button>
