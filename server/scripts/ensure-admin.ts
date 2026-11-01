@@ -9,7 +9,7 @@ const messages = {
   promoted: "[admin] the existing account for SEED_ADMIN_EMAIL is now an admin (log out and back in).",
   created: "[admin] admin account created for SEED_ADMIN_EMAIL.",
   reset: "[admin] the password of the SEED_ADMIN_EMAIL account was reset from SEED_ADMIN_PASSWORD. Remove SEED_ADMIN_RESET now, or it is reset again on every start.",
-  "needs-password": "[admin] no account exists for SEED_ADMIN_EMAIL yet. Sign up with that email on the site (it is promoted at the next start), or set SEED_ADMIN_PASSWORD (8+ characters, not the default) to create it.",
+  "needs-password": "[admin] no account exists for SEED_ADMIN_EMAIL yet, and SEED_ADMIN_PASSWORD is missing, shorter than 8 characters or the default (ChangeMe123!), so none was created. Set a strong SEED_ADMIN_PASSWORD in the environment and redeploy, or sign up with that email on the site (it is promoted to admin at the next start).",
 } as const;
 
 const prisma = new PrismaClient();
