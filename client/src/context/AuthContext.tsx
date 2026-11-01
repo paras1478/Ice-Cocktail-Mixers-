@@ -18,8 +18,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let live = true;
-    // 401 simply means "not logged in"; any other failure also leaves the user logged out rather than blocking the app.
-    api.get<{ user: User }>("/auth/me").then((r) => live && setUser(r.data.user)).catch(() => undefined).finally(() => live && setLoading(false));
+    // { user: null } means "not logged in"; any failure also leaves the user logged out rather than blocking the app.
+    api.get<{ user: User | null }>("/auth/me").then((r) => live && setUser(r.data.user)).catch(() => undefined).finally(() => live && setLoading(false));
     return () => { live = false; };
   }, []);
 

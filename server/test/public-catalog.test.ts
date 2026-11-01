@@ -17,7 +17,7 @@ describe("public catalogue vs protected routes (no cookie, i.e. a logged-out vis
     expect(Array.isArray(bundles.body.bundles)).toBe(true);
   });
   it("still protects the account and cart endpoints with a clean 401", async () => {
-    await request(app).get("/api/auth/me").expect(401);
+    expect((await request(app).get("/api/auth/me").expect(200)).body).toEqual({ user: null });
     await request(app).get("/api/cart").expect(401);
     await request(app).get("/api/orders").expect(401);
   });

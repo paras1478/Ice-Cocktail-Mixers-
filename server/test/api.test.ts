@@ -70,7 +70,7 @@ describe("auth", () => {
     await a.post("/api/auth/register").send({ name: "Jo Customer", email: "Jo@Test.dev", password: "password123" }).expect(201);
     expect((await a.get("/api/auth/me").expect(200)).body.user).toMatchObject({ email: "jo@test.dev", role: "CUSTOMER" });
     await a.post("/api/auth/logout").expect(200);
-    await a.get("/api/auth/me").expect(401);
+    expect((await a.get("/api/auth/me").expect(200)).body).toEqual({ user: null }); // logged out is an answer, not an error
     await request(app).post("/api/auth/register").send({ name: "Dup", email: "jo@test.dev", password: "password123" }).expect(409);
   });
   it("rejects bad credentials with one generic message and weak passwords", async () => {
@@ -610,7 +610,7 @@ describe("customer management", () => {
   it("blocks disabled accounts from logging in and from using an existing session", async () => {
     const a = await login(cust.email, cust.password);
     await prisma.user.update({ where: { email: cust.email }, data: { isActive: false } });
-    await a.get("/api/auth/me").expect(401);
+    expect((await a.get("/api/auth/me").expect(200)).body).toEqual({ user: null });
     await request(app).post("/api/auth/login").send({ email: cust.email, password: cust.password }).expect(403);
     const admin = await login("admin@test.dev", "AdminPass123");
     expect((await admin.get("/api/admin/customers").query({ status: "disabled" }).expect(200)).body.customers[0]).toMatchObject({ email: cust.email, status: "DISABLED" });

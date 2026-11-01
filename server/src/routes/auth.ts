@@ -6,7 +6,7 @@ import { ah, parse } from "../lib/http.js";
 import { HttpError } from "../lib/errors.js";
 import { env } from "../lib/env.js";
 import { authenticate, changePassword, registerAccount, updateProfile } from "../services/accounts.js";
-import { COOKIE, cookieOptions, requireAuth, signToken } from "../middleware/auth.js";
+import { COOKIE, cookieOptions, optionalAuth, requireAuth, signToken } from "../middleware/auth.js";
 
 export const authRouter = Router();
 
@@ -55,12 +55,15 @@ authRouter.post("/logout", (_req, res) => {
   res.clearCookie(COOKIE, { ...cookieOptions, maxAge: undefined }).json({ ok: true });
 });
 
+// "Who am I?" is a question, not a protected action: a visitor with no (or an expired / invalid) session gets { user: null } with 200,
+// so being logged out is never reported as an error. Everything that needs a session still answers 401 through requireAuth.
 authRouter.get(
   "/me",
-  requireAuth,
+  optionalAuth,
   ah(async (req, res) => {
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id } });
-    res.json({ user: publicUser(user) });
+    if (!req.user) return void res.json({ user: null });
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    res.json({ user: user ? publicUser(user) : null });
   }),
 );
 
