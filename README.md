@@ -28,7 +28,7 @@ cd ../client && npm install
 cd .. && npm install && npm run dev   # API :4000, web :5173 (Vite proxies /api)
 ```
 
-Admin login: `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` (defaults `admin@example.com` / `ChangeMe123!`: change them). Codes: `WELCOME10` (10% over ₹200), `FLAT50` (₹50 over ₹400).
+Admin login: the email and password you set in `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` (there are no built-in credentials; the server creates or promotes that account at startup). Codes: `WELCOME10` (10% over ₹200), `FLAT50` (₹50 over ₹400).
 
 ## Environment (`server/.env`)
 

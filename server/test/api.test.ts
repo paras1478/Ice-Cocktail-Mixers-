@@ -625,6 +625,7 @@ describe("CORS and deployment health", () => {
     expect(parseOrigins("https://ice-cocktail-beta.vercel.app/")).toEqual(["https://ice-cocktail-beta.vercel.app"]); // the deployed value had a trailing slash
     expect(parseOrigins("https://a.vercel.app/path/x")).toEqual(["https://a.vercel.app"]);
     expect(parseOrigins(" https://a.vercel.app , http://localhost:5173/ ,https://a.vercel.app")).toEqual(["https://a.vercel.app", "http://localhost:5173"]);
+    expect(parseOrigins("https://a.vercel.app\nhttps://b.vercel.app, https://c.vercel.app")).toEqual(["https://a.vercel.app", "https://b.vercel.app", "https://c.vercel.app"]); // pasted one per line
     expect(parseOrigins("")).toEqual([]);
     expect(() => parseOrigins("not a url")).toThrow(/invalid URL/);
     const { allowedOrigins } = await import("../src/lib/origins.js");

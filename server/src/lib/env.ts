@@ -32,8 +32,6 @@ const schema = z.object({
   // Geoapify geocoding (server-side): reverse geocoding (pin -> address) and delivery address / PIN search.
   GEOAPIFY_API_KEY: z.string().trim().min(1).optional(),
   GEOAPIFY_URL: z.string().url().default("https://api.geoapify.com"),
-  SEED_ADMIN_EMAIL: z.string().email().default("admin@example.com"),
-  SEED_ADMIN_PASSWORD: z.string().min(8).default("ChangeMe123!"),
 });
 
 const parsed = schema.safeParse(process.env);

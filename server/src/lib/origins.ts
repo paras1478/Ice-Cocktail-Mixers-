@@ -8,13 +8,13 @@ export function allowedOrigins(configured: string[], nodeEnv: string): string[] 
 
 /**
  * Parses CLIENT_ORIGIN into the list of allowed browser origins.
- * Accepts one origin or a comma-separated list, and tolerates what people actually paste: a trailing slash
+ * Accepts one origin or a list separated by commas, spaces or newlines, and tolerates what people actually paste: a trailing slash
  * ("https://app.vercel.app/"), a path, or stray spaces. A browser sends the Origin header WITHOUT a trailing slash,
  * so a value with one would never match and every request would be blocked by CORS.
  */
 export function parseOrigins(raw: string): string[] {
   const out: string[] = [];
-  for (const part of raw.split(",")) {
+  for (const part of raw.split(/[\s,]+/)) { // commas, spaces and newlines all separate origins
     const v = part.trim();
     if (!v) continue;
     let origin: string;

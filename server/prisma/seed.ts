@@ -11,10 +11,11 @@ const prisma = new PrismaClient();
 const rupees = (n: number) => Math.round(n * 100);
 
 async function main() {
-  const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@example.com";
-  const adminPass = process.env.SEED_ADMIN_PASSWORD ?? "ChangeMe123!";
-  if (process.env.NODE_ENV === "production" && (!process.env.SEED_ADMIN_PASSWORD || adminPass === "ChangeMe123!" || adminPass.length < 8)) {
-    console.warn("Admin NOT created: set SEED_ADMIN_EMAIL and a strong SEED_ADMIN_PASSWORD (not the default) to create the admin in production.");
+  // The admin comes only from the environment (SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD): there are no built-in credentials.
+  const adminEmail = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
+  const adminPass = process.env.SEED_ADMIN_PASSWORD;
+  if (!adminEmail || !adminPass || adminPass.length < 8 || adminPass === "ChangeMe123!") {
+    console.warn("Admin NOT created: set SEED_ADMIN_EMAIL and a strong SEED_ADMIN_PASSWORD (8+ characters, not the old default) to create the admin.");
   } else {
     await prisma.user.upsert({
       where: { email: adminEmail },
