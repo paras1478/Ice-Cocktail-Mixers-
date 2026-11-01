@@ -12,7 +12,8 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "catalog:check-images": "tsx scripts/check-images.ts"
+    "catalog:check-images": "tsx scripts/check-images.ts",
+    "admin:seed": "tsx scripts/ensure-admin.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
