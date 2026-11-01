@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Clock, LayoutDashboard, LogOut, MapPin, Moon, ShoppingCart, Sun, User as UserIcon, X } from "lucide-react";
+import { LayoutDashboard, LogOut, MapPin, Moon, ShoppingBag, Sun, User as UserIcon, X } from "lucide-react";
 import { api } from "../lib/api";
 import type { Category } from "../lib/types";
 import { cleanPin, pincodeError } from "../lib/pincode";
@@ -13,7 +13,7 @@ import { SearchBar } from "./SearchBar";
 import { ErrorBoundary, FieldError, Logo, useAsync } from "./ui";
 import { PinFeedback } from "./DeliveryInfo";
 
-/** Customer-facing delivery strip. Never rendered inside admin routes. */
+/** Slim announcement bar. It shows the brand line until a PIN code is checked, then the honest delivery estimate. Never rendered inside admin routes. */
 function DeliveryBanner() {
   const loc = useLocationCtx();
   let text: ReactNode;
@@ -21,13 +21,10 @@ function DeliveryBanner() {
   else if (loc.delivery?.serviceable) text = <>Delivering to <b>{loc.delivery.areaName}</b> ({loc.delivery.pincode}) in about <b>{loc.delivery.etaMinutes} min</b> <span className="opacity-75">· an estimate, not a guarantee</span></>;
   else if (loc.status === "unavailable") text = <>Sorry, delivery is not available in this area (<b>{loc.pincode}</b>).</>;
   else if (loc.status === "error") text = <>Unable to verify delivery. Please try again. <button className="underline" onClick={() => loc.retry()}>Retry</button></>;
-  else text = "Enter your PIN code to see if we deliver to you and how long it takes.";
+  else text = <span className="font-semibold uppercase tracking-[0.14em]">Good ice. Great mixers. Better gatherings.</span>;
   return (
-    <div className="bg-header text-on-header" data-testid="delivery-banner">
-      <div className="container-x flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-xs sm:text-sm">
-        <p className="flex items-center gap-2"><Clock className="h-4 w-4 shrink-0 text-badge" aria-hidden />{text}</p>
-        <button onClick={loc.openModal} className="hidden items-center gap-1 font-semibold text-badge underline underline-offset-2 sm:inline-flex"><MapPin className="h-3.5 w-3.5" aria-hidden />{loc.pincode ? "Change PIN code" : "Enter PIN code"}</button>
-      </div>
+    <div className="bg-topbar text-on-topbar" data-testid="delivery-banner">
+      <p className="container-x py-1.5 text-center text-[11px] sm:text-xs">{text}</p>
     </div>
   );
 }
@@ -91,18 +88,22 @@ function LocationModal() {
   );
 }
 
-const iconBtn = "relative grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-white/10 sm:h-10 sm:w-10";
+const iconBtn = "relative grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-tint sm:h-10 sm:w-10";
+const textBtn = "relative inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold hover:bg-tint";
+const compact = "max-sm:w-9 max-sm:justify-center max-sm:px-0";
 
-/** Always-visible delivery control in the header: the saved PIN (and estimate when we deliver), or a plain "Enter PIN". Opens the existing PIN dialog. */
+/** Always-visible delivery control in the header: the saved PIN (and estimate when we deliver), or a plain "Enter PIN code". Opens the existing PIN dialog. */
 function DeliverTo({ className = "" }: { className?: string }) {
   const loc = useLocationCtx();
   const eta = loc.delivery?.serviceable ? ` · ${loc.delivery.etaMinutes} min` : "";
   return (
     <button onClick={loc.openModal} data-testid="deliver-to" aria-label={loc.pincode ? `Deliver to ${loc.pincode}. Change PIN code` : "Enter PIN code to check delivery"}
-      className={`${className} min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-white/25 px-3 text-xs font-semibold transition hover:bg-white/10 sm:text-sm`}>
-      <MapPin className="h-4 w-4 text-badge" aria-hidden />
-      <span className="hidden sm:inline opacity-75">Deliver to</span>
-      <span className="font-extrabold">{loc.pincode ? `${loc.pincode}${eta}` : "Enter PIN"}</span>
+      className={`${className} min-h-10 shrink-0 items-center gap-2 rounded-full px-1 text-left transition hover:opacity-80`}>
+      <MapPin className="h-4 w-4 shrink-0 text-ink" aria-hidden />
+      <span className="leading-tight">
+        <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted">Delivering to</span>
+        <span className="block text-sm font-bold">{loc.pincode ? `${loc.pincode}${eta}` : "Enter PIN code"}</span>
+      </span>
     </button>
   );
 }
@@ -113,43 +114,48 @@ function Header({ admin }: { admin: boolean }) {
   const { theme, toggle } = useTheme();
   const nav = useNavigate();
   return (
-    <header className="sticky top-0 z-40 bg-header text-on-header shadow-md">
-      <div className="container-x flex items-center gap-2 py-2.5 sm:gap-3">
-        {/* Logged in, the header holds up to six icons: on narrow phones only the logo mark is shown so nothing overlaps. */}
-        <div className={`min-w-0 shrink ${user ? "max-[430px]:[&_.font-display]:hidden" : ""}`}><Logo /></div>
-        {!admin && <div className="mx-2 hidden max-w-xl flex-1 md:block"><SearchBar /></div>}
+    <header className="sticky top-0 z-40 border-b border-line bg-header text-on-header">
+      <div className="container-x flex items-center gap-3 py-3 sm:gap-6 sm:py-4">
+        <div className="min-w-0 shrink-0"><Logo /></div>
         {!admin && <DeliverTo className="hidden md:inline-flex" />}
+        {!admin && <div className="mx-2 hidden max-w-lg flex-1 md:block"><SearchBar /></div>}
         {admin && <span className="chip ml-2 bg-badge text-badge-ink">Admin</span>}
         <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1">
-          <button onClick={toggle} className={iconBtn} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>{theme === "dark" ? <Sun className="h-5 w-5" aria-hidden /> : <Moon className="h-5 w-5" aria-hidden />}</button>
+          <button onClick={toggle} className={`${textBtn} ${compact}`} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>{theme === "dark" ? <Sun className="h-[18px] w-[18px]" aria-hidden /> : <Moon className="h-[18px] w-[18px]" aria-hidden />}<span className="hidden lg:inline">Theme</span></button>
           {user?.role === "ADMIN" && <Link to="/admin" className={iconBtn} aria-label="Admin dashboard"><LayoutDashboard className="h-5 w-5" aria-hidden /></Link>}
           {user ? (
             <>
-              <Link to="/account" className={iconBtn} aria-label="My account"><UserIcon className="h-5 w-5" aria-hidden /></Link>
+              <Link to="/account" className={`${textBtn} ${compact}`} aria-label="My account"><UserIcon className="h-[18px] w-[18px]" aria-hidden /><span className="hidden lg:inline">Account</span></Link>
               <button className={iconBtn} aria-label="Log out" onClick={async () => { await logout(); nav("/"); }}><LogOut className="h-5 w-5" aria-hidden /></button>
             </>
-          ) : <Link to="/login" className="rounded-full px-3 py-2 text-sm font-semibold hover:bg-white/10">Log in</Link>}
+          ) : <Link to="/login" className={textBtn}><UserIcon className="h-[18px] w-[18px]" aria-hidden /><span className="hidden sm:inline">Log in</span></Link>}
           {!admin && (
-            <Link to="/cart" className={iconBtn} aria-label={`Cart, ${count} item${count === 1 ? "" : "s"}`}>
-              <ShoppingCart className="h-5 w-5" aria-hidden />
-              {count > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-badge px-1 text-[11px] font-extrabold text-badge-ink" data-testid="cart-count">{count}</span>}
+            <Link to="/cart" className={`${textBtn} ${compact}`} aria-label={`Cart, ${count} item${count === 1 ? "" : "s"}`}>
+              <ShoppingBag className="h-[18px] w-[18px]" aria-hidden />
+              <span className="hidden sm:inline" aria-hidden>Cart ({count})</span>
+              {count > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-badge px-1 text-[11px] font-extrabold text-badge-ink sm:hidden" aria-hidden>{count}</span>}
+              <span className="sr-only" data-testid="cart-count">{count}</span>
             </Link>
           )}
         </div>
       </div>
-      {!admin && <div className="container-x flex items-center gap-2 pb-2.5 md:hidden"><div className="min-w-0 flex-1"><SearchBar /></div><DeliverTo className="inline-flex" /></div>}
+      {!admin && <div className="container-x flex flex-col gap-2 pb-3 md:hidden"><DeliverTo className="inline-flex" /><SearchBar /></div>}
     </header>
   );
 }
 
-function Footer() {
+function Footer({ categories }: { categories?: Category[] | null }) {
+  const shop = (categories ?? []).filter((c) => c.slug !== "party-bundles" && c.slug !== "party-essentials").slice(0, 6);
+  const head = "mb-3 text-xs font-bold uppercase tracking-[0.14em] opacity-70";
   return (
-    <footer className="mt-10 bg-header text-on-header sm:mt-16">
-      <div className="container-x grid grid-cols-2 gap-x-6 gap-y-5 py-6 text-sm sm:grid-cols-3 sm:gap-8 sm:py-10">
-        <div className="col-span-2 sm:col-span-1"><Logo /><p className="mt-2 max-w-xs text-xs opacity-80 sm:mt-3 sm:text-sm">Party ice, craft tonic, club soda, margarita mixes, bitters and citrus garnishes, delivered fast. Delivery times are estimates, not guarantees.</p></div>
-        <div><h2 className="mb-2 font-sans text-sm font-bold uppercase tracking-wide text-badge">Shop</h2><ul className="space-y-1.5 opacity-90"><li><Link to="/category/ice-bags">Ice bags</Link></li><li><Link to="/category/tonic-water">Tonic water</Link></li><li><Link to="/category/party-bundles">Party bundles</Link></li></ul></div>
-        <div><h2 className="mb-2 font-sans text-sm font-bold uppercase tracking-wide text-badge">Help</h2><ul className="space-y-1.5 opacity-90"><li><Link to="/orders">My orders</Link></li><li><Link to="/policy/delivery">Delivery information</Link></li><li><Link to="/policy/returns">Returns &amp; refunds</Link></li><li><Link to="/policy/privacy">Privacy</Link></li><li><Link to="/policy/terms">Terms</Link></li></ul></div>
+    <footer className="bg-footer text-on-footer">
+      <div className="container-x grid gap-8 py-10 text-sm sm:grid-cols-2 sm:py-12 lg:grid-cols-[1.4fr_1fr_1fr_1fr] lg:gap-16">
+        <div><Logo /><p className="mt-4 max-w-xs text-sm opacity-80">Good ice. Great mixers. The little things that bring everyone together.</p><p className="mt-3 max-w-xs text-xs opacity-60">A non-alcoholic ice &amp; mixers store. Delivery times are estimates, not guarantees.</p></div>
+        <div><h2 className={head}>Shop</h2><ul className="space-y-2 opacity-90">{shop.map((c) => <li key={c.id}><Link to={`/category/${c.slug}`} className="hover:underline">{c.name}</Link></li>)}</ul></div>
+        <div><h2 className={head}>Gather</h2><ul className="space-y-2 opacity-90"><li><Link to="/category/party-bundles" className="hover:underline">Party bundles</Link></li><li><Link to="/category/party-essentials" className="hover:underline">Party essentials</Link></li><li><Link to="/shop" className="hover:underline">Shop all products</Link></li><li><Link to="/policy/delivery" className="hover:underline">How delivery works</Link></li></ul></div>
+        <div><h2 className={head}>Good to know</h2><ul className="space-y-2 opacity-90"><li><Link to="/orders" className="hover:underline">My orders</Link></li><li><Link to="/policy/delivery" className="hover:underline">Delivery information</Link></li><li><Link to="/policy/returns" className="hover:underline">Returns &amp; refunds</Link></li><li><Link to="/policy/privacy" className="hover:underline">Privacy</Link></li><li><Link to="/policy/terms" className="hover:underline">Terms</Link></li></ul></div>
       </div>
+      <div className="border-t border-white/15"><p className="container-x py-4 text-[11px] opacity-60">© {new Date().getFullYear()} Ice &amp; Mixers Express. Product photography is representative.</p></div>
     </footer>
   );
 }
@@ -162,11 +168,11 @@ export function Layout() {
   return (
     <div className="flex min-h-screen flex-col">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[90] focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2">Skip to content</a>
-      <Header admin={admin} />
       {!admin && <DeliveryBanner />}
+      <Header admin={admin} />
       {!admin && <CategoryNav categories={cats.data} loading={cats.loading} error={cats.error} onRetry={cats.reload} />}
       <main id="main" className="flex-1"><ErrorBoundary><Outlet /></ErrorBoundary></main>
-      <Footer />
+      <Footer categories={cats.data} />
       <LocationModal />
     </div>
   );

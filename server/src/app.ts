@@ -8,8 +8,6 @@ import { publicProductWhere } from "./lib/publish.js";
 import { paymentRouter, razorpayWebhook } from "./routes/payments.js";
 import { prisma } from "./lib/db.js";
 import { classifyDbError } from "./lib/dbHealth.js";
-import { createMongoStoreFromEnv, mongoReason, sanitize } from "./lib/mongo.js";
-import { credentialStore, setCredentialStore } from "./services/accounts.js";
 import { authRouter } from "./routes/auth.js";
 import { addressRouter } from "./routes/addresses.js";
 import { productRouter, categoryRouter, searchRouter } from "./routes/catalog.js";
@@ -21,17 +19,6 @@ import { errorHandler, notFound } from "./middleware/error.js";
 const warnedOrigins = new Set<string>();
 
 export function createApp() {
-  // Optional MongoDB Atlas credential store (MONGODB_URI). Connection problems are logged without credentials and never crash the server.
-  if (!credentialStore()) {
-    const mongo = createMongoStoreFromEnv();
-    if (mongo) {
-      setCredentialStore(mongo);
-      mongo.connect().then(
-        () => console.log("[mongodb] connected: user accounts are stored in MongoDB Atlas"),
-        (e) => console.error("[mongodb] could not connect:", mongoReason(e).reason, "-", sanitize(e)),
-      );
-    }
-  }
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
@@ -73,18 +60,7 @@ export function createApp() {
     try {
       const categories = await prisma.category.count();
       const [products, visibleProducts, bundles] = await Promise.all([prisma.product.count(), prisma.product.count({ where: publicProductWhere() }), prisma.bundle.count()]);
-      // Accounts: only reports whether MongoDB answers (never the URI, host or credentials).
-      const mongoStore = credentialStore();
-      let mongo: { configured: boolean; ok?: boolean; reason?: string; hint?: string } = { configured: false };
-      if (mongoStore && "ping" in mongoStore) {
-        try {
-          await (mongoStore as { ping(): Promise<void> }).ping();
-          mongo = { configured: true, ok: true };
-        } catch (e) {
-          mongo = { configured: true, ok: false, ...mongoReason(e) };
-        }
-      }
-      res.status(mongo.configured && !mongo.ok ? 503 : 200).json({ ok: !mongo.configured || !!mongo.ok, db: true, categories, products, visibleProducts, bundles, samplePricesVisible: allowSamplePrices, mongo });
+      res.json({ ok: true, db: true, categories, products, visibleProducts, bundles, samplePricesVisible: allowSamplePrices });
     } catch (e) {
       res.status(503).json({ ok: false, db: false, ...classifyDbError(e) });
     }

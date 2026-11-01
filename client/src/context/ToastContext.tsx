@@ -19,7 +19,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="pointer-events-none fixed inset-x-0 bottom-20 z-[80] flex flex-col items-center gap-2 px-4 sm:bottom-6" role="status" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} className="rise pointer-events-auto flex max-w-md items-center gap-2 rounded-full bg-header px-4 py-2.5 text-sm font-semibold text-on-header shadow-lift">
+          <div key={t.id} className="rise pointer-events-auto flex max-w-md items-center gap-2 rounded-full bg-topbar px-4 py-2.5 text-sm font-semibold text-on-topbar shadow-lift">
             {t.kind === "success" ? <CheckCircle2 className="h-4 w-4 shrink-0 text-badge" aria-hidden /> : <XCircle className="h-4 w-4 shrink-0 text-danger" aria-hidden />}
             {t.text}
           </div>

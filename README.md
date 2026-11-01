@@ -124,8 +124,6 @@ Environment variables (Render dashboard → Environment):
 | `CLIENT_ORIGIN` | `https://ice-cocktail-beta.vercel.app` (comma-separate several origins; a trailing slash is tolerated) |
 | `ALLOW_SAMPLE_PRICES` | `true` while the catalogue still has sample prices. **Without it, production hides every product with an unverified price, so the shop looks empty.** |
 | `COOKIE_SAMESITE` | `none` **only** if the browser calls the API directly (see Vercel option 2); leave unset for option 1 |
-| `MONGODB_URI` | optional: your MongoDB Atlas connection string. When set, sign-up/sign-in credentials (email + bcrypt hash) are stored in Atlas. Paste the real value **only** here (Render secret), never in code, `VITE_` variables or Git |
-| `MONGODB_DB` | optional, default `icemixers`: the Atlas database used for accounts |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | the admin you want created by the seed |
 
 Create the data **once**: open the Render **Shell** for the service and run `npm run db:seed` (it creates categories, products, bundles, sample delivery areas, discount codes and the admin). **Do not re-run it on a live shop:** it resets products, bundles, delivery areas and discount codes to the values in `server/prisma/catalog.ts` (so edits made in Admin, such as stock and prices, would be overwritten). Customers, addresses, carts and orders are never touched by the seed. `migrate deploy` only creates or updates tables: it never resets or deletes data.
@@ -165,17 +163,11 @@ Choose **one** way to reach the API:
 - Deep links returned 404 (no SPA fallback), and `CLIENT_ORIGIN` had a trailing slash, which never matches a browser's `Origin` header, so CORS would have blocked every call even with the URL fixed.
 - The Render database endpoints returned HTTP 500; use `/api/health/db` (above) to see why. The most likely causes are tables not created or an unseeded database; the second is the production sample-price rule (`ALLOW_SAMPLE_PRICES`).
 
-### User accounts in MongoDB Atlas (optional)
+### User accounts
 
-With `MONGODB_URI` set, sign-up and sign-in use Atlas: the `users` collection in database `MONGODB_DB` stores the email (unique, lower-case), name, phone and a **bcrypt hash** of the password. No plaintext password, OTP or token is stored. PostgreSQL keeps a password-less profile row with the same id so orders, carts and addresses keep working. Accounts that already exist in PostgreSQL are copied to Atlas on their first sign-in (same id, nothing deleted). Without `MONGODB_URI` the app behaves exactly as before. This is email + password sign-in; Google/Gmail OAuth ("Sign in with Google") is not implemented.
+Customers sign up and sign in with email + password. Each account is a row in the PostgreSQL `User` table (email, name, phone, bcrypt password hash), next to their orders, carts and addresses, and shows up in the admin customer list. No plaintext password, OTP or token is stored. Google/Gmail sign-in is not implemented.
 
-Atlas setup:
-
-1. **Rotate the password** of any database user whose connection string was shared, and prefer a dedicated user: Atlas → Database Access → Add New Database User → role *Read and write to a specific database* → `icemixers` only.
-2. Atlas → Network Access → allow Render to connect. Render's outbound IPs are listed in the service's *Connect* menu; `0.0.0.0/0` also works but is less strict.
-3. Render → Environment → add `MONGODB_URI` (and optionally `MONGODB_DB`), then redeploy.
-
-Test it: `/api/health/db` shows `"mongo":{"configured":true,"ok":true}`. If not, `reason` is `AUTH_FAILED` (wrong user/password), `UNREACHABLE` (Network Access / host) or `BAD_URI`. Then sign up on the site, sign out, sign in again; the user appears in Atlas → Browse Collections → `icemixers.users`. If Atlas is down, sign-in returns a safe 503 and the rest of the shop keeps working.
+Moving old MongoDB accounts: `cd server && MONGODB_URI=... npx tsx scripts/migrate-mongo-users.ts` copies them (with their password hashes) into PostgreSQL once; it never deletes anything. Run it against the production `DATABASE_URL` before deploying this version.
 
 ### Online payments with Razorpay (test mode first)
 

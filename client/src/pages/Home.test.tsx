@@ -45,13 +45,13 @@ describe("homepage hero: delivery", () => {
   });
   it("has the concise headline, a PIN field that reuses the real lookup, and the configured delivery fee", async () => {
     show();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Party Ice & Mixers, Delivered Fast.");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("A good evening starts with ice.");
     fireEvent.change(screen.getByLabelText("PIN code"), { target: { value: "12201" } });
-    fireEvent.click(screen.getByRole("button", { name: "Check" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check availability" }));
     expect(screen.getByRole("status", { name: "" })).toBeTruthy();
     expect(setPincode).not.toHaveBeenCalled(); // an incomplete PIN is rejected before any request
     fireEvent.change(screen.getByLabelText("PIN code"), { target: { value: "122018" } });
-    fireEvent.click(screen.getByRole("button", { name: "Check" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check availability" }));
     await waitFor(() => expect(setPincode).toHaveBeenCalledWith("122018"));
     await waitFor(() => expect(screen.getByText(/Delivery ₹29, free above ₹499/)).toBeInTheDocument());
   });

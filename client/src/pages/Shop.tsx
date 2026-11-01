@@ -104,7 +104,7 @@ export default function Shop() {
     <div className="container-x py-8">
       <nav aria-label="Breadcrumb" className="mb-3 text-sm text-muted"><Link to="/" className="hover:underline">Home</Link> / <span className="text-ink">{category?.name ?? "Shop"}</span></nav>
       {slug && !category ? <Skeleton className="h-10 w-56" /> : category?.imageUrl ? (
-        <header className="relative isolate overflow-hidden rounded-2xl bg-header text-white" data-testid="category-banner">
+        <header className="relative isolate overflow-hidden rounded-2xl bg-topbar text-white" data-testid="category-banner">
           <CoverImage src={category.imageUrl} width={1200} height={300} eager />
           <div className="relative px-5 py-8 sm:px-8 sm:py-12">
             <h1 className="text-3xl font-extrabold drop-shadow sm:text-4xl">{title}</h1>

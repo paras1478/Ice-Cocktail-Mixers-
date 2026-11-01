@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { Layout } from "./Layout";
 
@@ -22,8 +22,8 @@ describe("Layout", () => {
     at("/");
     expect(screen.getByTestId("delivery-banner")).toHaveTextContent(/about 14 min/);
     expect(screen.getByTestId("delivery-banner")).toHaveTextContent(/not a guarantee/);
-    await waitFor(() => expect(screen.getByRole("link", { name: "Ice Bags" })).toBeInTheDocument());
-    const nav = screen.getByRole("navigation", { name: "Product categories" });
+    const nav = await screen.findByRole("navigation", { name: "Product categories" });
+    await waitFor(() => expect(within(nav).getByRole("link", { name: "Ice Bags" })).toBeInTheDocument());
     expect(nav.querySelectorAll("a")).toHaveLength(8);
     expect(nav.textContent).not.toMatch(/beer|whisky|vodka|rum|gin|wine|champagne|malt/i);
   });

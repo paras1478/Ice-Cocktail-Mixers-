@@ -5,12 +5,9 @@ import { apiError } from "../lib/api";
 
 export function Logo() {
   return (
-    <Link to="/" className="flex items-center gap-2.5" aria-label="Ice & Cocktail Mixers Express, home">
-      <img src="/img/logo-mark.svg" alt="" className="h-9 w-9" width={36} height={36} />
-      <span className="font-display leading-none">
-        <span className="block text-[15px] font-extrabold tracking-tight">Ice &amp; Mixers</span>
-        <span className="block text-[11px] font-bold uppercase tracking-[0.18em] opacity-75">Express</span>
-      </span>
+    <Link to="/" className="flex flex-col leading-none" aria-label="Ice & Cocktail Mixers Express, home">
+      <span className="font-script text-[26px] leading-none sm:text-[30px]">Ice &amp; Mixers</span>
+      <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.22em] opacity-70">Express</span>
     </Link>
   );
 }
