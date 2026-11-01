@@ -29,4 +29,16 @@ describe("ensureAdmin (production admin bootstrap)", () => {
     expect(u.role).toBe("ADMIN");
     expect(await bcrypt.compare("Strong-Pass-1", u.passwordHash)).toBe(true);
   });
+  it("resets an existing admin's password only when the reset switch is on and the password is strong", async () => {
+    const email = mail();
+    const u = await prisma.user.create({ data: { email, name: "Owner", role: "ADMIN", passwordHash: await bcrypt.hash("Old-Pass-123", 4) } });
+    expect(await ensureAdmin(prisma, email, "New-Pass-1234")).toBe("already-admin"); // no switch: nothing changes
+    expect(await bcrypt.compare("Old-Pass-123", (await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).passwordHash)).toBe(true);
+    expect(await ensureAdmin(prisma, email, "ChangeMe123!", true)).toBe("needs-password"); // weak: nothing changes
+    expect(await bcrypt.compare("Old-Pass-123", (await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).passwordHash)).toBe(true);
+    expect(await ensureAdmin(prisma, email, "New-Pass-1234", true)).toBe("reset");
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: u.id } });
+    expect(after.role).toBe("ADMIN");
+    expect(await bcrypt.compare("New-Pass-1234", after.passwordHash)).toBe(true);
+  });
 });
