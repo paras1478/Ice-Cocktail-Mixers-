@@ -35,8 +35,9 @@ async function resolveUser(req: Request): Promise<AuthUser | undefined> {
   try {
     const p = jwt.verify(token, env.JWT_SECRET) as AuthUser;
     // Re-read the role from the database so demoted/deleted users lose access immediately.
-    const u = await prisma.user.findUnique({ where: { id: p.id }, select: { id: true, role: true } });
-    return u ?? undefined;
+    const u = await prisma.user.findUnique({ where: { id: p.id }, select: { id: true, role: true, isActive: true } });
+    // A disabled account loses access immediately, even with a still-valid cookie.
+    return u?.isActive ? { id: u.id, role: u.role } : undefined;
   } catch {
     return undefined;
   }

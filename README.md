@@ -167,8 +167,6 @@ Choose **one** way to reach the API:
 
 Customers sign up and sign in with email + password. Each account is a row in the PostgreSQL `User` table (email, name, phone, bcrypt password hash), next to their orders, carts and addresses, and shows up in the admin customer list. No plaintext password, OTP or token is stored. Google/Gmail sign-in is not implemented.
 
-Moving old MongoDB accounts: `cd server && MONGODB_URI=... npx tsx scripts/migrate-mongo-users.ts` copies them (with their password hashes) into PostgreSQL once; it never deletes anything. Run it against the production `DATABASE_URL` before deploying this version.
-
 ### Online payments with Razorpay (test mode first)
 
 Customers can pay by UPI or card with Razorpay Standard Checkout; Cash on Delivery keeps working. How it works: the order is saved first (stock reserved, payment `PENDING`), the server creates the Razorpay order for the **server-computed total**, the browser pays, and the server marks the order paid only after it verifies the signature **and** asks Razorpay for the real payment status and amount. A webhook confirms payments even if the customer closes the tab. Paid orders are ordinary PostgreSQL orders, so they appear in the admin Orders tab with an "Online · paid" badge.

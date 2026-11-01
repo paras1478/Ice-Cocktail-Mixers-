@@ -551,6 +551,74 @@ describe("admin dashboard data", () => {
   });
 });
 
+describe("customer management", () => {
+  const cust = { name: "Cara Customer", email: "cara@test.dev", password: "password123", phone: "9123456780" };
+
+  it("saves registrations, reuses the record on login, and lists real data with search, filter and pagination for admins only", async () => {
+    const before = await prisma.user.count();
+    const a = agent();
+    await a.post("/api/auth/register").send(cust).expect(201);
+    const row = await prisma.user.findUniqueOrThrow({ where: { email: cust.email } });
+    expect(row).toMatchObject({ name: cust.name, phone: cust.phone, role: "CUSTOMER", isActive: true });
+    expect(row.lastLoginAt).not.toBeNull();
+    await request(app).post("/api/auth/register").send(cust).expect(409); // no duplicate
+
+    // login reuses the same record and refreshes lastLoginAt
+    await new Promise((r) => setTimeout(r, 20));
+    await login(cust.email, cust.password);
+    expect(await prisma.user.count()).toBe(before + 1);
+    const after = await prisma.user.findUniqueOrThrow({ where: { email: cust.email } });
+    expect(after.id).toBe(row.id);
+    expect(after.lastLoginAt!.getTime()).toBeGreaterThan(row.lastLoginAt!.getTime());
+
+    // profile updates are reflected in the admin list
+    await a.patch("/api/auth/me").send({ name: "Cara Updated" }).expect(200);
+
+    const admin = await login("admin@test.dev", "AdminPass123");
+    const list = (await admin.get("/api/admin/customers").query({ q: "cara" }).expect(200)).body;
+    expect(list.total).toBe(1);
+    expect(list.customers[0]).toMatchObject({ id: row.id, name: "Cara Updated", email: cust.email, phone: cust.phone, status: "ACTIVE", orderCount: 0, totalSpentMinor: 0 });
+    expect(list.customers[0].createdAt).toBeTruthy();
+    expect(list.customers[0].lastLoginAt).toBeTruthy();
+    expect(list.customers[0]).not.toHaveProperty("passwordHash");
+
+    // spend counts non-cancelled orders only
+    const o = (await a.post("/api/orders").send(checkout([{ productId: ice.id, quantity: 1 }])).expect(201)).body.order;
+    let c = (await admin.get("/api/admin/customers").query({ q: cust.email }).expect(200)).body.customers[0];
+    expect(c).toMatchObject({ orderCount: 1, totalSpentMinor: o.totalMinor });
+    await a.patch(`/api/orders/${o.id}/status`).send({ status: "CANCELLED" }).expect(200);
+    c = (await admin.get("/api/admin/customers").query({ q: "9123456780" }).expect(200)).body.customers[0];
+    expect(c).toMatchObject({ orderCount: 1, totalSpentMinor: 0 });
+
+    // pagination, filtering, validation; admins are never listed as customers
+    const p1 = (await admin.get("/api/admin/customers").query({ pageSize: 1, page: 1 }).expect(200)).body;
+    const p2 = (await admin.get("/api/admin/customers").query({ pageSize: 1, page: 2 }).expect(200)).body;
+    expect(p1.customers).toHaveLength(1);
+    expect(p2.customers[0].id).not.toBe(p1.customers[0].id);
+    expect(p1.total).toBeGreaterThan(1);
+    const all = (await admin.get("/api/admin/customers").query({ pageSize: 100 }).expect(200)).body.customers as { email: string }[];
+    expect(all.map((x) => x.email)).not.toContain("admin@test.dev");
+    expect((await admin.get("/api/admin/customers").query({ status: "disabled", q: "cara" }).expect(200)).body.total).toBe(0);
+    await admin.get("/api/admin/customers").query({ pageSize: 1000 }).expect(400);
+
+    // customers cannot read the list, only their own account
+    await a.get("/api/admin/customers").expect(403);
+    await request(app).get("/api/admin/customers").expect(401);
+    expect((await a.get("/api/auth/me").expect(200)).body.user.email).toBe(cust.email);
+  });
+
+  it("blocks disabled accounts from logging in and from using an existing session", async () => {
+    const a = await login(cust.email, cust.password);
+    await prisma.user.update({ where: { email: cust.email }, data: { isActive: false } });
+    await a.get("/api/auth/me").expect(401);
+    await request(app).post("/api/auth/login").send({ email: cust.email, password: cust.password }).expect(403);
+    const admin = await login("admin@test.dev", "AdminPass123");
+    expect((await admin.get("/api/admin/customers").query({ status: "disabled" }).expect(200)).body.customers[0]).toMatchObject({ email: cust.email, status: "DISABLED" });
+    await prisma.user.update({ where: { email: cust.email }, data: { isActive: true } });
+    await login(cust.email, cust.password);
+  });
+});
+
 describe("CORS and deployment health", () => {
   it("parses CLIENT_ORIGIN: trailing slash, paths, lists and spaces are tolerated; garbage is rejected", async () => {
     const { parseOrigins } = await import("../src/lib/origins.js");

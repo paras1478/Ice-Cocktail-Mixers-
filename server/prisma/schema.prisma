@@ -60,11 +60,14 @@ model User {
   name         String
   phone        String?
   role         Role      @default(CUSTOMER)
+  isActive     Boolean   @default(true) // account status: false = disabled, cannot log in
+  lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   addresses    Address[]
   orders       Order[]
   cart         Cart?
+  @@index([role, createdAt])
 }
 
 model Address {

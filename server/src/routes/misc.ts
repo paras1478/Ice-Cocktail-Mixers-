@@ -9,6 +9,7 @@ import { env } from "../lib/env.js";
 import { optionalAuth, requireAdmin } from "../middleware/auth.js";
 import { isPublic } from "../lib/publish.js";
 import { pricingConfig } from "../services/checkout.js";
+import { listCustomers } from "../services/accounts.js";
 import { serviceability } from "../lib/address.js";
 import { lookupPincode, reverseGeocode, searchPlaces } from "../lib/geo.js";
 
@@ -288,9 +289,18 @@ adminRouter.get(
 
 adminRouter.get(
   "/customers",
-  ah(async (_req, res) => {
-    const rows = await prisma.user.findMany({ where: { role: "CUSTOMER" }, orderBy: { createdAt: "desc" }, take: 200, include: { _count: { select: { orders: true } } } });
-    res.json({ customers: rows.map((u) => ({ id: u.id, name: u.name, email: u.email, phone: u.phone, createdAt: u.createdAt, orderCount: u._count.orders })) });
+  ah(async (req, res) => {
+    const q = parse(
+      z.object({
+        q: z.string().trim().max(100).optional(),
+        status: z.enum(["active", "disabled"]).optional(),
+        sort: z.enum(["joined", "lastLogin", "name"]).optional(),
+        page: z.coerce.number().int().min(1).default(1),
+        pageSize: z.coerce.number().int().min(1).max(100).default(20),
+      }),
+      req.query,
+    );
+    res.json(await listCustomers(prisma, q));
   }),
 );
 

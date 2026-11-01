@@ -290,9 +290,62 @@ function Areas() {
 }
 
 // ---------- Customers ----------
+interface CustomerRow { id: string; name: string; email: string; phone: string | null; status: "ACTIVE" | "DISABLED"; createdAt: string; lastLoginAt: string | null; orderCount: number; totalSpentMinor: number }
+interface CustomerPage { customers: CustomerRow[]; total: number; page: number; pageSize: number }
+const PAGE_SIZE = 20;
+
 function Customers() {
-  const list = useAsync(() => api.get<{ customers: { id: string; name: string; email: string; phone: string | null; createdAt: string; orderCount: number }[] }>("/admin/customers").then((r) => r.data.customers), []);
-  return <Load state={list}>{(cs) => !cs.length ? <EmptyState title="No customers yet" /> : <Table head={["Name", "Email", "Mobile", "Joined", "Orders"]}>{cs.map((c) => <tr key={c.id}><td className="px-4 py-3 font-bold">{c.name}</td><td className="px-4 py-3">{c.email}</td><td className="px-4 py-3">{c.phone ?? "—"}</td><td className="px-4 py-3">{formatDateTime(c.createdAt)}</td><td className="px-4 py-3">{c.orderCount}</td></tr>)}</Table>}</Load>;
+  const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState("");
+  const [sort, setSort] = useState("joined");
+  const [page, setPage] = useState(1);
+  // Debounce typing so every keystroke does not hit the database.
+  useEffect(() => { const t = setTimeout(() => { setQ(search.trim()); setPage(1); }, 300); return () => clearTimeout(t); }, [search]);
+  const list = useAsync(
+    () => api.get<CustomerPage>("/admin/customers", { params: { q: q || undefined, status: status || undefined, sort, page, pageSize: PAGE_SIZE } }).then((r) => r.data),
+    [q, status, sort, page],
+  );
+  const pages = list.data ? Math.max(1, Math.ceil(list.data.total / list.data.pageSize)) : 1;
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3">
+        <input aria-label="Search customers" className="input max-w-xs flex-1" placeholder="Search name, email or phone" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <select aria-label="Filter by status" className="input w-auto" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+          <option value="">All statuses</option><option value="active">Active</option><option value="disabled">Disabled</option>
+        </select>
+        <select aria-label="Sort customers" className="input w-auto" value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>
+          <option value="joined">Newest first</option><option value="lastLogin">Recent login</option><option value="name">Name A–Z</option>
+        </select>
+      </div>
+      <Load state={list}>{(d) => !d.customers.length ? <EmptyState title={q || status ? "No customers match" : "No customers yet"} /> : (
+        <>
+          <Table head={["Name", "Email", "Mobile", "Registered", "Last login", "Status", "Orders", "Total spent"]}>
+            {d.customers.map((c) => (
+              <tr key={c.id}>
+                <td className="px-4 py-3 font-bold">{c.name}</td>
+                <td className="px-4 py-3">{c.email}</td>
+                <td className="px-4 py-3">{c.phone ?? "—"}</td>
+                <td className="px-4 py-3">{formatDateTime(c.createdAt)}</td>
+                <td className="px-4 py-3">{c.lastLoginAt ? formatDateTime(c.lastLoginAt) : "Never"}</td>
+                <td className="px-4 py-3">{c.status === "ACTIVE" ? "Active" : "Disabled"}</td>
+                <td className="px-4 py-3">{c.orderCount}</td>
+                <td className="px-4 py-3">{formatMoney(c.totalSpentMinor)}</td>
+              </tr>
+            ))}
+          </Table>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted">{d.total} customer{d.total === 1 ? "" : "s"}</span>
+            <div className="flex items-center gap-3">
+              <button className="font-semibold underline disabled:opacity-40 disabled:no-underline" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button>
+              <span>Page {page} of {pages}</span>
+              <button className="font-semibold underline disabled:opacity-40 disabled:no-underline" disabled={page >= pages} onClick={() => setPage(page + 1)}>Next</button>
+            </div>
+          </div>
+        </>
+      )}</Load>
+    </div>
+  );
 }
 
 export default function Admin() {
