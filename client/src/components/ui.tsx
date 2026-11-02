@@ -1,6 +1,6 @@
 import { Component, useCallback, useEffect, useState, type ErrorInfo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Minus, Plus, RefreshCw, SearchX } from "lucide-react";
+import { AlertTriangle, Eye, EyeOff, Minus, Plus, RefreshCw, SearchX } from "lucide-react";
 import { apiError } from "../lib/api";
 
 export function Logo() {
@@ -56,6 +56,20 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 
 export function FieldError({ id, message }: { id: string; message?: string }) {
   return message ? <p id={id} role="alert" className="mt-1 text-xs font-semibold text-danger">{message}</p> : null;
+}
+
+/** Password field with an eye button that shows or hides the typed text. It is hidden again whenever the field is re-rendered fresh (page load). */
+export function PasswordInput({ id, value, onChange, autoComplete, invalid }: { id: string; value: string; onChange: (v: string) => void; autoComplete?: string; invalid?: boolean }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <div className="relative">
+      <input id={id} type={shown ? "text" : "password"} className="input pr-11" autoComplete={autoComplete} value={value} aria-invalid={invalid} onChange={(e) => onChange(e.target.value)} />
+      <button type="button" onClick={() => setShown((v) => !v)} aria-label={shown ? "Hide password" : "Show password"} aria-pressed={shown}
+        className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted hover:bg-tint hover:text-ink">
+        {shown ? <EyeOff className="h-[18px] w-[18px]" aria-hidden /> : <Eye className="h-[18px] w-[18px]" aria-hidden />}
+      </button>
+    </div>
+  );
 }
 
 export function QuantityStepper({ value, max, label, onChange }: { value: number; max: number; label: string; onChange: (n: number) => void }) {

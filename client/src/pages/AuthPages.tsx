@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { FieldError, Spinner } from "../components/ui";
+import { FieldError, PasswordInput, Spinner } from "../components/ui";
 
 export function RequireAuth({ children, admin = false }: { children: React.ReactNode; admin?: boolean }) {
   const { user, loading } = useAuth();
@@ -30,7 +30,7 @@ export function LoginPage() {
       <form onSubmit={submit} className="card mx-auto max-w-md space-y-4 p-6" noValidate>
         <h1 className="text-2xl font-extrabold">Log in</h1>
         <div><label htmlFor="l-email" className="label">Email</label><input id="l-email" type="email" className="input" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-        <div><label htmlFor="l-pass" className="label">Password</label><input id="l-pass" type="password" className="input" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+        <div><label htmlFor="l-pass" className="label">Password</label><PasswordInput id="l-pass" autoComplete="current-password" value={password} onChange={setPassword} /></div>
         {error && <p role="alert" className="text-sm font-semibold text-danger">{error}</p>}
         <button className="btn-primary w-full" disabled={busy}>{busy ? "Logging in…" : "Log in"}</button>
         <p className="text-center text-sm text-muted">New here? <Link to="/register" state={{ from }} className="font-semibold text-accent underline">Create an account</Link></p>
@@ -52,7 +52,9 @@ export function RegisterPage() {
     catch (ex) { const i = apiError(ex); setErrors(Object.keys(i.fields).length ? i.fields : { form: i.message }); } finally { setBusy(false); }
   };
   const field = (k: keyof typeof f, label: string, type = "text", ac?: string) => (
-    <div><label htmlFor={`r-${k}`} className="label">{label}</label><input id={`r-${k}`} type={type} autoComplete={ac} className="input" value={f[k]} aria-invalid={!!errors[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /><FieldError id={`r-${k}-e`} message={errors[k]} /></div>
+    <div><label htmlFor={`r-${k}`} className="label">{label}</label>{type === "password"
+      ? <PasswordInput id={`r-${k}`} autoComplete={ac} value={f[k]} invalid={!!errors[k]} onChange={(v) => setF({ ...f, [k]: v })} />
+      : <input id={`r-${k}`} type={type} autoComplete={ac} className="input" value={f[k]} aria-invalid={!!errors[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} />}<FieldError id={`r-${k}-e`} message={errors[k]} /></div>
   );
   return (
     <div className="container-x py-12">
