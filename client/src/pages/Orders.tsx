@@ -30,11 +30,11 @@ export function StatusTracker({ status }: { status: OrderStatus }) {
     <ol className="grid grid-cols-5" aria-label="Order progress">
       {FLOW.map((s, i) => (
         <li key={s} aria-current={i === at ? "step" : undefined} className="relative flex min-w-0 flex-col items-center text-center">
-          {i < FLOW.length - 1 && <span aria-hidden className={`absolute left-1/2 top-3 h-0.5 w-full ${i < at ? "bg-action" : "bg-line"}`} />}
-          <span className={`relative z-10 grid h-6 w-6 place-items-center rounded-full text-[11px] font-bold ${i < at ? "bg-action text-on-action" : i === at ? "bg-action text-on-action ring-4 ring-tint" : "bg-tint text-muted"}`}>
+          {i < FLOW.length - 1 && <span aria-hidden className={`absolute left-1/2 top-2.5 h-0.5 w-full ${i < at ? "bg-action" : "bg-line"}`} />}
+          <span className={`relative z-10 grid h-5 w-5 place-items-center rounded-full text-[10px] font-bold ${i < at ? "bg-action text-on-action" : i === at ? "bg-action text-on-action ring-4 ring-tint" : "bg-tint text-muted"}`}>
             {i < at ? <Check className="h-3.5 w-3.5" aria-hidden /> : i + 1}
           </span>
-          <span className={`mt-1.5 hyphens-auto px-0.5 text-[10px] leading-tight sm:text-xs ${i <= at ? "font-bold text-ink" : "text-muted"}`}>{STATUS_LABEL[s]}</span>
+          <span className={`mt-1 hyphens-auto px-0.5 text-[10px] leading-tight sm:text-xs ${i <= at ? "font-bold text-ink" : "text-muted"}`}>{STATUS_LABEL[s]}</span>
         </li>
       ))}
     </ol>
@@ -142,18 +142,18 @@ function OrderCard({ o, onChange, onCancel, busy }: { o: Order; onChange: (o: Or
 
   return (
     <article className="card overflow-hidden" aria-label={`Order ${o.number}`} data-testid={`order-${o.number}`}>
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line bg-band/60 px-4 py-3 sm:px-5">
-        <div>
-          <h2 className="font-sans text-base font-extrabold">Your order</h2>
-          <p className="text-xs text-muted">Placed {formatDateTime(o.createdAt)}</p>
+      <header className="flex items-center justify-between gap-3 border-b border-line bg-band/60 px-4 py-2.5">
+        <div className="min-w-0">
+          <h2 className="font-sans text-sm font-extrabold leading-tight">Your order</h2>
+          <p className="text-[11px] text-muted">Placed {formatDateTime(o.createdAt)}</p>
         </div>
-        <div className="text-right">
-          <p className="text-lg font-extrabold leading-tight">{formatMoney(o.totalMinor)}</p>
-          <p className="mt-1 flex items-center justify-end gap-2 text-xs"><StatusBadge status={o.status} /><span className={`font-bold ${pay.tone === "ok" ? "text-ok" : pay.tone === "danger" ? "text-danger" : "text-muted"}`} data-testid="payment-label">{pay.text}</span></p>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <StatusBadge status={o.status} />
+          <span className={`text-[11px] font-bold ${pay.tone === "ok" ? "text-ok" : pay.tone === "danger" ? "text-danger" : "text-muted"}`} data-testid="payment-label">{pay.text}</span>
         </div>
       </header>
 
-      <div className="space-y-4 px-4 py-4 sm:px-5">
+      <div className="space-y-3 px-4 py-3">
         {cancelled ? (
           <div className="rounded-xl border border-danger/30 bg-band p-3 text-sm" data-testid="cancelled-note">
             <p className="font-bold text-danger">Order cancelled</p>
@@ -171,17 +171,17 @@ function OrderCard({ o, onChange, onCancel, busy }: { o: Order; onChange: (o: Or
           </div>
         )}
 
-        <ul className="divide-y divide-line">
+        <ul className="space-y-2">
           {o.items.map((i) => (
-            <li key={i.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-              <ProductImage src={i.image ?? undefined} alt={i.name} width={56} height={56} className="h-14 w-14 shrink-0 rounded-xl border border-line object-cover" />
-              <span className="min-w-0 flex-1 text-sm"><span className="block font-semibold leading-snug">{i.name}</span><span className="text-xs text-muted">Qty {i.quantity} × {formatMoney(i.unitMinor)}</span></span>
+            <li key={i.id} className="flex items-center gap-3">
+              <ProductImage src={i.image ?? undefined} alt={i.name} width={40} height={40} className="h-10 w-10 shrink-0 rounded-lg border border-line object-cover" />
+              <span className="min-w-0 flex-1 text-sm"><span className="block truncate font-semibold leading-snug">{i.name}</span><span className="text-xs text-muted">Qty {i.quantity} × {formatMoney(i.unitMinor)}</span></span>
               <span className="text-sm font-bold">{formatMoney(i.unitMinor * i.quantity)}</span>
             </li>
           ))}
         </ul>
 
-        <div className="rounded-xl bg-band p-3"><OrderAddress o={o} /></div>
+        <div className="flex items-end justify-between gap-3 rounded-xl bg-band px-3 py-2"><OrderAddress o={o} /><p className="shrink-0 text-right"><span className="block text-[11px] text-muted">Total</span><span className="text-lg font-extrabold leading-tight">{formatMoney(o.totalMinor)}</span></p></div>
 
         {open && (
           <dl className="space-y-1.5 rounded-xl border border-line p-3 text-sm" data-testid="order-details">
@@ -196,11 +196,11 @@ function OrderCard({ o, onChange, onCancel, busy }: { o: Order; onChange: (o: Or
         )}
       </div>
 
-      <footer className="flex flex-col gap-2 border-t border-line px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-5">
-        {unpaidOnline && <button className="btn-add-solid w-full sm:w-auto" disabled={working === "pay" || busy} onClick={payNow}>{working === "pay" ? "Opening payment…" : `Pay ${formatMoney(o.totalMinor)} now`}</button>}
-        {canCancel(o) && <button className="btn-ghost w-full border-danger/50 text-danger sm:w-auto" disabled={busy || working !== null} onClick={() => onCancel(o)} data-testid="cancel-order">Cancel order</button>}
-        {cancelled || o.status === "DELIVERED" ? <button className="btn-ghost w-full sm:w-auto" onClick={reorder}><RotateCcw className="h-4 w-4" aria-hidden />Reorder</button> : null}
-        <button type="button" className="btn-ghost w-full sm:ml-auto sm:w-auto" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide details" : "View details"}<ChevronDown className={`h-4 w-4 transition ${open ? "rotate-180" : ""}`} aria-hidden /></button>
+      <footer className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2.5">
+        {unpaidOnline && <button className="btn-add-solid !min-h-9 !px-3 text-sm" disabled={working === "pay" || busy} onClick={payNow}>{working === "pay" ? "Opening payment…" : `Pay ${formatMoney(o.totalMinor)} now`}</button>}
+        {canCancel(o) && <button className="btn-ghost !min-h-9 !px-3 border-danger/50 text-sm text-danger" disabled={busy || working !== null} onClick={() => onCancel(o)} data-testid="cancel-order">Cancel order</button>}
+        {cancelled || o.status === "DELIVERED" ? <button className="btn-ghost !min-h-9 !px-3 text-sm" onClick={reorder}><RotateCcw className="h-4 w-4" aria-hidden />Reorder</button> : null}
+        <button type="button" className="btn-ghost !min-h-9 !px-3 ml-auto text-sm" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide details" : "View details"}<ChevronDown className={`h-4 w-4 transition ${open ? "rotate-180" : ""}`} aria-hidden /></button>
       </footer>
     </article>
   );
@@ -227,7 +227,7 @@ export default function Orders() {
     try {
       const r = await api.post<{ order: Order; alreadyCancelled: boolean }>(`/orders/${target.id}/cancel`, { reason: reason || undefined });
       apply(r.data.order); // only now, after the backend confirmed it
-      toast.success(r.data.alreadyCancelled ? "This order was already cancelled" : `Order #${target.number} cancelled`);
+      toast.success(r.data.alreadyCancelled ? "This order was already cancelled" : `Order cancelled`);
       setTarget(null);
       reload();
     } catch (e) {
@@ -238,9 +238,9 @@ export default function Orders() {
   };
 
   return (
-    <div className="container-x py-8">
-      <h1 className="text-3xl font-extrabold">My orders</h1>
-      <div className="mt-6 space-y-5">
+    <div className="container-x max-w-3xl py-6">
+      <h1 className="text-2xl font-extrabold">My orders</h1>
+      <div className="mt-4 space-y-3">
         {loading ? <Skeleton className="h-64" /> : error ? <ErrorState message={error} onRetry={reload} />
           : !data?.length ? <EmptyState title="No orders yet" body="Your orders will appear here once you place one." action={<Link to="/shop" className="btn-primary">Start shopping</Link>} />
           : data.map((o) => <OrderCard key={o.id} o={patched[o.id] ?? o} onChange={apply} onCancel={(x) => { setCancelError(null); setTarget(x); }} busy={busy} />)}
