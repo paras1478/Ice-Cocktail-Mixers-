@@ -108,7 +108,6 @@ describe("checkout: online payment (UPI / card / net banking)", () => {
     opened[0].handler({ razorpay_order_id: "order_ABC", razorpay_payment_id: "pay_XYZ", razorpay_signature: "sig" });
     expect(await screen.findByRole("heading", { name: "Payment successful" })).toBeInTheDocument();
     expect(posts("/payments/razorpay/verify")[0].body).toEqual({ orderId: "o1", razorpay_order_id: "order_ABC", razorpay_payment_id: "pay_XYZ", razorpay_signature: "sig" });
-    expect(screen.getByTestId("order-number")).toHaveTextContent("#101");
     expect(cart.clear).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("link", { name: "Continue shopping" })).toBeInTheDocument();
   });

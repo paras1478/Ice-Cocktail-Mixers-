@@ -280,8 +280,7 @@ function Success({ order }: { order: Order }) {
         <CheckCircle2 className="mx-auto h-14 w-14 text-ok" aria-hidden />
         <h1 className="mt-3 text-2xl font-extrabold">{paidOnline ? "Payment successful" : "Order placed"}</h1>
         <p className="mt-1 text-muted">{paidOnline ? `We received ${formatMoney(order.totalMinor)}. Thank you for your order!` : `Please keep ${formatMoney(order.totalMinor)} ready to pay on delivery.`}</p>
-        <p className="mx-auto mt-4 inline-block rounded-xl bg-band px-4 py-2 text-sm">Order ID <b data-testid="order-number">#{order.number}</b></p>
-        <ul className="mt-5 divide-y divide-line rounded-xl border border-line text-left text-sm">
+                <ul className="mt-5 divide-y divide-line rounded-xl border border-line text-left text-sm">
           {order.items.map((i) => <li key={i.id} className="flex justify-between gap-3 px-4 py-2.5"><span>{i.quantity} × {i.name}</span><span className="font-semibold">{formatMoney(i.unitMinor * i.quantity)}</span></li>)}
           <li className="flex justify-between gap-3 bg-band px-4 py-2.5 font-extrabold"><span>{paidOnline ? "Paid" : "To pay"}</span><span>{formatMoney(order.totalMinor)}</span></li>
         </ul>
@@ -302,7 +301,7 @@ function PayPanel({ order, busy, error, onPay, onLater }: { order: Order; busy: 
         <h1 className="mt-3 text-2xl font-extrabold">{busy ? "Processing your payment…" : error?.kind === "failed" ? "Payment failed" : error?.kind === "cancelled" ? "Payment cancelled" : error ? "We could not start the payment" : "Complete your payment"}</h1>
         {busy && <p className="mt-2 font-semibold">Please do not refresh or close this page.</p>}
         {!busy && error && <p role="alert" className="mx-auto mt-3 max-w-md rounded-xl bg-band p-3 text-sm font-semibold">{error.message}</p>}
-        <p className="mt-4 text-sm text-muted">Order <b>#{order.number}</b> · Amount to pay <b className="text-ink">{formatMoney(order.totalMinor)}</b></p>
+        <p className="mt-4 text-sm text-muted">Amount to pay <b className="text-ink">{formatMoney(order.totalMinor)}</b></p>
         <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
           <button className="btn-add-solid px-8" onClick={onPay} disabled={busy}>{busy ? "Processing…" : error ? "Retry payment" : "Pay securely"}</button>
           <Link to="/orders" onClick={onLater} className="btn-ghost">Pay later from My orders</Link>

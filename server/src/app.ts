@@ -1,4 +1,6 @@
 import express from "express";
+import fs from "node:fs";
+import path from "node:path";
 import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -22,6 +24,9 @@ export function createApp() {
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
+  // Product photos live in the web client (client/public/img). Serving them here lets the mobile app load "/img/..." from the API host (when the folder is deployed alongside).
+  const imgDir = path.resolve(process.cwd(), "../client/public/img");
+  if (fs.existsSync(imgDir)) app.use("/img", express.static(imgDir, { maxAge: "7d", index: false }));
   if (trustProxy) app.set("trust proxy", 1); // so per-IP rate limits see the real client IP behind Render/nginx
   app.use(
     cors({

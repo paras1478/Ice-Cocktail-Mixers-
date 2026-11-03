@@ -30,7 +30,9 @@ export function signToken(user: AuthUser) {
 }
 
 async function resolveUser(req: Request): Promise<AuthUser | undefined> {
-  const token = req.cookies?.[COOKIE];
+  // Browsers send the session cookie; the mobile app sends the same JWT as "Authorization: Bearer <token>".
+  const bearer = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1];
+  const token = req.cookies?.[COOKIE] ?? bearer;
   if (!token) return undefined;
   try {
     const p = jwt.verify(token, env.JWT_SECRET) as AuthUser;

@@ -49,7 +49,7 @@ export async function payForOrder(orderId: string, choice?: OnlineMethod): Promi
   const result = await new Promise<CheckoutSuccess>((resolve, reject) => {
     const rz = new window.Razorpay!({
       key: g.keyId, amount: g.amountMinor, currency: g.currency, order_id: g.razorpayOrderId,
-      name: "Ice & Mixers Express", description: `Order #${g.orderNumber}`, prefill: { ...g.prefill, ...(choice ? { method: tab(choice) } : {}) }, theme: { color: "#d97706" },
+      name: "Ice & Mixers Express", description: "Your order", prefill: { ...g.prefill, ...(choice ? { method: tab(choice) } : {}) }, theme: { color: "#d97706" },
       handler: resolve,
       modal: { ondismiss: () => reject(new PaymentNotCompleted("Payment was cancelled. Your order is saved and nothing was charged: you can pay again.", "cancelled")), confirm_close: true },
     });

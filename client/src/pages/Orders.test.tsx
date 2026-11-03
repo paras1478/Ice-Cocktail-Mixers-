@@ -59,7 +59,7 @@ describe("cancelling", () => {
     post.mockResolvedValue({ data: { alreadyCancelled: false, order: base({ status: "CANCELLED", cancelledAt: "2026-10-28T12:00:00Z", cancelReason: "Changed my mind", cancelledBy: "CUSTOMER", payment: { method: "ONLINE", status: "PAID", amountMinor: 14160, refundStatus: "PROCESSING", refundId: "rfnd_1" } }) } });
     fireEvent.click(await screen.findByTestId("cancel-order"));
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveTextContent(/Cancel order #101/);
+    expect(dialog).toHaveTextContent(/Cancel this order/);
     expect(dialog).toHaveTextContent(/full refund/);
     expect(dialog).toHaveTextContent(/only complete once the payment provider confirms/);
     expect(post).not.toHaveBeenCalled(); // nothing happens before the customer confirms
@@ -149,7 +149,7 @@ describe("card content", () => {
   it("shows number, date, total, payment status, thumbnail, address with a map link, and expandable details", async () => {
     show([base({})]);
     const card = await screen.findByTestId("order-101");
-    expect(card).toHaveTextContent("Order #101");
+    expect(card).toHaveTextContent("Your order");
     expect(within(card).getByTestId("payment-label")).toHaveTextContent("Paid online");
     expect(within(card).getByAltText("Party Ice")).toHaveAttribute("src", "/img/ice.jpg");
     expect(within(card).getByRole("link", { name: /Open map/ })).toHaveAttribute("href", expect.stringContaining("openstreetmap.org"));

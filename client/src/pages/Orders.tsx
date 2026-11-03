@@ -90,7 +90,7 @@ function CancelDialog({ order, busy, error, onConfirm, onClose }: { order: Order
   return (
     <div className="fixed inset-0 z-[80] grid place-items-end bg-scrim/60 p-0 sm:place-items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div role="dialog" aria-modal="true" aria-labelledby="cancel-title" className="card w-full max-w-md rounded-b-none p-5 sm:rounded-b-[var(--radius-card)] sm:p-6">
-        <h2 id="cancel-title" className="text-lg font-extrabold">Cancel order #{order.number}?</h2>
+        <h2 id="cancel-title" className="text-lg font-extrabold">Cancel this order?</h2>
         <p className="mt-2 text-sm text-ink-soft">
           {paidOnline
             ? <>You paid <b>{formatMoney(order.totalMinor)}</b> online. When you cancel, we ask Razorpay for a full refund to your original payment method. The refund is only complete once the payment provider confirms it, and banks usually take about 5–7 business days.</>
@@ -124,7 +124,7 @@ function OrderCard({ o, onChange, onCancel, busy }: { o: Order; onChange: (o: Or
 
   const payNow = async () => {
     setWorking("pay");
-    try { onChange(await payForOrder(o.id)); toast.success(`Payment received for order #${o.number}`); }
+    try { onChange(await payForOrder(o.id)); toast.success(`Payment received for your order`); }
     catch (e) { toast.error(e instanceof Error && !("response" in e) ? e.message : apiError(e).message); }
     finally { setWorking(null); }
   };
@@ -144,7 +144,7 @@ function OrderCard({ o, onChange, onCancel, busy }: { o: Order; onChange: (o: Or
     <article className="card overflow-hidden" aria-label={`Order ${o.number}`} data-testid={`order-${o.number}`}>
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line bg-band/60 px-4 py-3 sm:px-5">
         <div>
-          <h2 className="font-sans text-base font-extrabold">Order #{o.number}</h2>
+          <h2 className="font-sans text-base font-extrabold">Your order</h2>
           <p className="text-xs text-muted">Placed {formatDateTime(o.createdAt)}</p>
         </div>
         <div className="text-right">

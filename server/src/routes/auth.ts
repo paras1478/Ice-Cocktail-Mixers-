@@ -36,7 +36,8 @@ authRouter.post(
       req.body,
     );
     const user = await registerAccount(prisma, { name: b.name, email: b.email, password: b.password, phone: b.phone });
-    res.cookie(COOKIE, signToken({ id: user.id, role: user.role }), cookieOptions).status(201).json({ user: publicUser(user) });
+    const token = signToken({ id: user.id, role: user.role });
+    res.cookie(COOKIE, token, cookieOptions).status(201).json({ user: publicUser(user), token });
   }),
 );
 
@@ -47,7 +48,8 @@ authRouter.post(
     const b = parse(z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(1) }), req.body);
     // Same message for unknown email and wrong password so accounts cannot be probed.
     const user = await authenticate(prisma, b.email, b.password);
-    res.cookie(COOKIE, signToken({ id: user.id, role: user.role }), cookieOptions).json({ user: publicUser(user) });
+    const token = signToken({ id: user.id, role: user.role });
+    res.cookie(COOKIE, token, cookieOptions).json({ user: publicUser(user), token });
   }),
 );
 
