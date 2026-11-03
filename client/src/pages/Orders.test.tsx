@@ -152,10 +152,10 @@ describe("card content", () => {
     expect(card).toHaveTextContent("Your order");
     expect(within(card).getByTestId("payment-label")).toHaveTextContent("Paid online");
     expect(within(card).getByAltText("Party Ice")).toHaveAttribute("src", "/img/ice.jpg");
-    expect(within(card).getByRole("link", { name: /Open map/ })).toHaveAttribute("href", expect.stringContaining("openstreetmap.org"));
-    expect(within(card).getByRole("list", { name: "Order progress" }).querySelectorAll("li")).toHaveLength(5);
     expect(within(card).queryByTestId("order-details")).toBeNull();
     fireEvent.click(within(card).getByRole("button", { name: /View details/ }));
     expect(within(card).getByTestId("order-details")).toHaveTextContent(/Subtotal/);
+    expect(within(card).getByRole("link", { name: /Open map/ })).toHaveAttribute("href", expect.stringContaining("openstreetmap.org"));
+    expect(within(card).getByRole("list", { name: "Order progress" }).querySelectorAll("li")).toHaveLength(5);
   });
 });

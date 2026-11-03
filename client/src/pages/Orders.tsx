@@ -140,68 +140,81 @@ function OrderCard({ o, onChange, onCancel, busy }: { o: Order; onChange: (o: Or
     nav("/cart");
   };
 
+  const shown = o.items.slice(0, 3);
+  const more = o.items.length - shown.length;
+  const itemCount = o.items.reduce((n, i) => n + i.quantity, 0);
   return (
     <article className="card overflow-hidden" aria-label={`Order ${o.number}`} data-testid={`order-${o.number}`}>
-      <header className="flex items-center justify-between gap-3 border-b border-line bg-band/60 px-4 py-2.5">
-        <div className="min-w-0">
-          <h2 className="font-sans text-sm font-extrabold leading-tight">Your order</h2>
-          <p className="text-[11px] text-muted">Placed {formatDateTime(o.createdAt)}</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <StatusBadge status={o.status} />
-          <span className={`text-[11px] font-bold ${pay.tone === "ok" ? "text-ok" : pay.tone === "danger" ? "text-danger" : "text-muted"}`} data-testid="payment-label">{pay.text}</span>
-        </div>
-      </header>
-
-      <div className="space-y-3 px-4 py-3">
-        {cancelled ? (
-          <div className="rounded-xl border border-danger/30 bg-band p-3 text-sm" data-testid="cancelled-note">
-            <p className="font-bold text-danger">Order cancelled</p>
-            <p className="text-ink-soft">{formatDateTime(o.cancelledAt ?? o.updatedAt)}{o.cancelledBy === "ADMIN" ? " · cancelled by our team" : ""}{o.cancelReason ? ` · Reason: ${o.cancelReason}` : ""}</p>
+      <div className="px-3 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          {!open ? (
+            <div className="flex shrink-0 -space-x-2.5" aria-label={`${itemCount} item${itemCount === 1 ? "" : "s"}`}>
+              {shown.map((i) => <ProductImage key={i.id} src={i.image ?? undefined} alt={i.name} width={40} height={40} className="h-10 w-10 rounded-xl border-2 border-surface bg-band object-cover" />)}
+              {more > 0 && <span className="grid h-10 w-10 place-items-center rounded-xl border-2 border-surface bg-band text-xs font-bold text-ink-soft">+{more}</span>}
+            </div>
+          ) : <h2 className="font-sans text-sm font-extrabold">Your order</h2>}
+          <div className="flex items-center gap-1">
+            <p className="text-base font-extrabold">{formatMoney(o.totalMinor)}</p>
+            <button type="button" className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-band" aria-label={open ? "Hide details" : "View details"} aria-expanded={open} onClick={() => setOpen(!open)}><ChevronDown className={`h-4 w-4 transition ${open ? "rotate-180" : ""}`} aria-hidden /></button>
           </div>
-        ) : <StatusTracker status={o.status} />}
+        </div>
+        <div className="mt-1.5 min-w-0">
+          {!open && <h2 className="font-sans text-xs font-extrabold leading-tight">Your order <span className="font-medium text-muted">· {itemCount} item{itemCount === 1 ? "" : "s"}</span></h2>}
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px]"><StatusBadge status={o.status} /><span className={`font-bold ${pay.tone === "ok" ? "text-ok" : pay.tone === "danger" ? "text-danger" : "text-muted"}`} data-testid="payment-label">{pay.text}</span></p>
+          <p className="mt-0.5 text-[11px] text-muted">{formatDateTime(o.createdAt)}</p>
+        </div>
+      </div>
 
-        {refund && (
-          <div className={`rounded-xl border p-3 text-sm ${refund.tone === "ok" ? "border-ok/40" : refund.tone === "danger" ? "border-danger/40" : "border-line"} bg-surface`} data-testid="refund-info" role="status">
-            <p className={`font-bold ${refund.tone === "ok" ? "text-ok" : refund.tone === "danger" ? "text-danger" : ""}`}>{refund.title}</p>
-            <p className="mt-0.5 text-ink-soft">{refund.body}</p>
-            {(o.payment?.refundStatus === "PROCESSING" || o.payment?.refundStatus === "REQUESTED") && (
-              <button type="button" className="btn-ghost mt-2 !min-h-9" onClick={checkRefund} disabled={working === "refund"}>{working === "refund" ? "Checking…" : "Check refund status"}</button>
-            )}
-          </div>
-        )}
+      {(cancelled || refund) && (
+        <div className="space-y-2 px-3 pb-2.5">
+          {cancelled && (
+            <div className="rounded-lg border border-danger/30 bg-band px-3 py-2 text-xs" data-testid="cancelled-note">
+              <p className="font-bold text-danger">Order cancelled</p>
+              <p className="text-ink-soft">{formatDateTime(o.cancelledAt ?? o.updatedAt)}{o.cancelledBy === "ADMIN" ? " · cancelled by our team" : ""}{o.cancelReason ? ` · Reason: ${o.cancelReason}` : ""}</p>
+            </div>
+          )}
+          {refund && (
+            <div className={`rounded-lg border px-3 py-2 text-xs ${refund.tone === "ok" ? "border-ok/40" : refund.tone === "danger" ? "border-danger/40" : "border-line"} bg-surface`} data-testid="refund-info" role="status">
+              <p className={`font-bold ${refund.tone === "ok" ? "text-ok" : refund.tone === "danger" ? "text-danger" : ""}`}>{refund.title}</p>
+              <p className="mt-0.5 text-ink-soft">{refund.body}</p>
+              {(o.payment?.refundStatus === "PROCESSING" || o.payment?.refundStatus === "REQUESTED") && (
+                <button type="button" className="btn-ghost mt-2 !min-h-8 !px-3 text-xs" onClick={checkRefund} disabled={working === "refund"}>{working === "refund" ? "Checking…" : "Check refund status"}</button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
-        <ul className="space-y-2">
-          {o.items.map((i) => (
-            <li key={i.id} className="flex items-center gap-3">
-              <ProductImage src={i.image ?? undefined} alt={i.name} width={40} height={40} className="h-10 w-10 shrink-0 rounded-lg border border-line object-cover" />
-              <span className="min-w-0 flex-1 text-sm"><span className="block truncate font-semibold leading-snug">{i.name}</span><span className="text-xs text-muted">Qty {i.quantity} × {formatMoney(i.unitMinor)}</span></span>
-              <span className="text-sm font-bold">{formatMoney(i.unitMinor * i.quantity)}</span>
-            </li>
-          ))}
-        </ul>
-
-        <div className="flex items-end justify-between gap-3 rounded-xl bg-band px-3 py-2"><OrderAddress o={o} /><p className="shrink-0 text-right"><span className="block text-[11px] text-muted">Total</span><span className="text-lg font-extrabold leading-tight">{formatMoney(o.totalMinor)}</span></p></div>
-
-        {open && (
-          <dl className="space-y-1.5 rounded-xl border border-line p-3 text-sm" data-testid="order-details">
+      {open && (
+        <div className="space-y-3 border-t border-line px-3 py-3" data-testid="order-details">
+          <StatusTracker status={o.status} />
+          <ul className="space-y-2">
+            {o.items.map((i) => (
+              <li key={i.id} className="flex items-center gap-3">
+                <ProductImage src={i.image ?? undefined} alt={i.name} width={40} height={40} className="h-10 w-10 shrink-0 rounded-lg border border-line object-cover" />
+                <span className="min-w-0 flex-1 text-sm"><span className="block truncate font-semibold leading-snug">{i.name}</span><span className="text-xs text-muted">Qty {i.quantity} × {formatMoney(i.unitMinor)}</span></span>
+                <span className="text-sm font-bold">{formatMoney(i.unitMinor * i.quantity)}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="rounded-lg bg-band px-3 py-2"><OrderAddress o={o} /></div>
+          <dl className="space-y-1 text-sm">
             <div className="flex justify-between"><dt>Subtotal</dt><dd className="font-semibold">{formatMoney(o.subtotalMinor)}</dd></div>
             {o.discountMinor > 0 && <div className="flex justify-between text-ok"><dt>Discount</dt><dd className="font-semibold">−{formatMoney(o.discountMinor)}</dd></div>}
             <div className="flex justify-between"><dt>Delivery fee</dt><dd className="font-semibold">{o.deliveryMinor === 0 ? "Free" : formatMoney(o.deliveryMinor)}</dd></div>
             <div className="flex justify-between"><dt>Taxes</dt><dd className="font-semibold">{formatMoney(o.taxMinor)}</dd></div>
-            <div className="flex justify-between border-t border-line pt-2 font-extrabold"><dt>Total</dt><dd>{formatMoney(o.totalMinor)}</dd></div>
-            <div className="flex justify-between text-xs text-muted"><dt>Payment</dt><dd>{o.payment?.method === "ONLINE" ? "Online (UPI / card / net banking)" : "Cash on delivery"}{o.payment?.paidAt ? ` · paid ${formatDateTime(o.payment.paidAt)}` : ""}</dd></div>
+            <div className="flex justify-between border-t border-line pt-1.5 font-extrabold"><dt>Total</dt><dd>{formatMoney(o.totalMinor)}</dd></div>
+            <div className="flex justify-between pt-1 text-xs text-muted"><dt>Payment</dt><dd>{o.payment?.method === "ONLINE" ? "Online (UPI / card / net banking)" : "Cash on delivery"}{o.payment?.paidAt ? ` · paid ${formatDateTime(o.payment.paidAt)}` : ""}</dd></div>
             {o.instructions && <p className="pt-1 text-xs text-muted">Delivery note: {o.instructions}</p>}
           </dl>
-        )}
-      </div>
+        </div>
+      )}
 
-      <footer className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2.5">
-        {unpaidOnline && <button className="btn-add-solid !min-h-9 !px-3 text-sm" disabled={working === "pay" || busy} onClick={payNow}>{working === "pay" ? "Opening payment…" : `Pay ${formatMoney(o.totalMinor)} now`}</button>}
-        {canCancel(o) && <button className="btn-ghost !min-h-9 !px-3 border-danger/50 text-sm text-danger" disabled={busy || working !== null} onClick={() => onCancel(o)} data-testid="cancel-order">Cancel order</button>}
-        {cancelled || o.status === "DELIVERED" ? <button className="btn-ghost !min-h-9 !px-3 text-sm" onClick={reorder}><RotateCcw className="h-4 w-4" aria-hidden />Reorder</button> : null}
-        <button type="button" className="btn-ghost !min-h-9 !px-3 ml-auto text-sm" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide details" : "View details"}<ChevronDown className={`h-4 w-4 transition ${open ? "rotate-180" : ""}`} aria-hidden /></button>
-      </footer>
+      {(unpaidOnline || canCancel(o) || cancelled || o.status === "DELIVERED") && <footer className="flex flex-wrap items-center gap-2 px-3 pb-2.5">
+        {unpaidOnline && <button className="btn-add-solid !min-h-8 !px-3 text-xs" disabled={working === "pay" || busy} onClick={payNow}>{working === "pay" ? "Opening payment…" : `Pay ${formatMoney(o.totalMinor)} now`}</button>}
+        {canCancel(o) && <button className="btn-ghost !min-h-8 !px-3 border-danger/50 text-xs text-danger" disabled={busy || working !== null} onClick={() => onCancel(o)} data-testid="cancel-order">Cancel order</button>}
+        {cancelled || o.status === "DELIVERED" ? <button className="btn-ghost !min-h-8 !px-3 text-xs" onClick={reorder}><RotateCcw className="h-3.5 w-3.5" aria-hidden />Reorder</button> : null}
+      </footer>}
     </article>
   );
 }
@@ -238,11 +251,11 @@ export default function Orders() {
   };
 
   return (
-    <div className="container-x max-w-3xl py-6">
+    <div className="container-x py-6">
       <h1 className="text-2xl font-extrabold">My orders</h1>
-      <div className="mt-4 space-y-3">
-        {loading ? <Skeleton className="h-64" /> : error ? <ErrorState message={error} onRetry={reload} />
-          : !data?.length ? <EmptyState title="No orders yet" body="Your orders will appear here once you place one." action={<Link to="/shop" className="btn-primary">Start shopping</Link>} />
+      <div className="mt-4 grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {loading ? <div className="col-span-full"><Skeleton className="h-64" /></div> : error ? <div className="col-span-full"><ErrorState message={error} onRetry={reload} /></div>
+          : !data?.length ? <div className="col-span-full"><EmptyState title="No orders yet" body="Your orders will appear here once you place one." action={<Link to="/shop" className="btn-primary">Start shopping</Link>} /></div>
           : data.map((o) => <OrderCard key={o.id} o={patched[o.id] ?? o} onChange={apply} onCancel={(x) => { setCancelError(null); setTarget(x); }} busy={busy} />)}
       </div>
       {target && <CancelDialog order={patched[target.id] ?? target} busy={busy} error={cancelError} onConfirm={confirmCancel} onClose={() => { setTarget(null); setCancelError(null); }} />}
