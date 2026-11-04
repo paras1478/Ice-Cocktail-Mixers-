@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, LogOut, MapPin, Moon, ShoppingBag, Sun, User as UserIcon, X } from "lucide-react";
+import { LayoutDashboard, LogOut, MapPin, Moon, Package, ShoppingBag, Sun, User as UserIcon, X } from "lucide-react";
 import { api } from "../lib/api";
 import type { Category } from "../lib/types";
 import { cleanPin, pincodeError } from "../lib/pincode";
@@ -129,6 +129,9 @@ function Header({ admin }: { admin: boolean }) {
               <button className={iconBtn} aria-label="Log out" onClick={async () => { await logout(); nav("/"); }}><LogOut className="h-5 w-5" aria-hidden /></button>
             </>
           ) : <Link to="/login" className={textBtn}><UserIcon className="h-[18px] w-[18px]" aria-hidden /><span className="hidden sm:inline">Log in</span></Link>}
+          {!admin && (
+            <Link to="/orders" className={`${textBtn} ${compact}`} aria-label="My orders"><Package className="h-[18px] w-[18px]" aria-hidden /><span className="hidden lg:inline">My orders</span></Link>
+          )}
           {!admin && (
             <Link to="/cart" className={`${textBtn} ${compact}`} aria-label={`Cart, ${count} item${count === 1 ? "" : "s"}`}>
               <ShoppingBag className="h-[18px] w-[18px]" aria-hidden />
