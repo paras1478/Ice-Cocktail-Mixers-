@@ -7,7 +7,7 @@ interface AuthApi {
   loading: boolean;
   login: (email: string, password: string) => Promise<User>;
   register: (input: { name: string; email: string; password: string; phone?: string }) => Promise<User>;
-  google: (idToken: string) => Promise<User>;
+  google: (token: string | { accessToken: string }) => Promise<User>;
   logout: () => Promise<void>;
   setUser: (u: User) => void;
 }
@@ -34,8 +34,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
     return data.user;
   }, []);
-  const google = useCallback(async (idToken: string) => {
-    const { data } = await api.post<{ user: User }>("/auth/google", { idToken });
+  const google = useCallback(async (token: string | { accessToken: string }) => {
+    const { data } = await api.post<{ user: User }>("/auth/google", typeof token === "string" ? { idToken: token } : token);
     setUser(data.user);
     return data.user;
   }, []);

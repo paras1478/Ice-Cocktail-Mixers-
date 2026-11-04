@@ -19,3 +19,21 @@ export async function verifyGoogleIdToken(idToken: string): Promise<{ email: str
     throw new HttpError(401, "Google sign-in failed. Please try again.");
   }
 }
+
+/** Web "Continue with Google" popup: verifies an OAuth access token (audience = one of our client IDs) and returns the verified email and name. */
+export async function verifyGoogleAccessToken(accessToken: string): Promise<{ email: string; name: string }> {
+  const audience = googleClientIds();
+  if (!audience.length) throw new HttpError(503, "Google sign-in is not set up yet");
+  try {
+    const info = await client.getTokenInfo(accessToken);
+    if (!info.aud || !audience.includes(info.aud) || !info.email || !info.email_verified) throw new Error("rejected");
+    let name = "";
+    try {
+      const r = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (r.ok) { const u = (await r.json()) as { name?: string; given_name?: string }; name = u.name ?? u.given_name ?? ""; }
+    } catch { /* the name is optional */ }
+    return { email: info.email, name };
+  } catch {
+    throw new HttpError(401, "Google sign-in failed. Please try again.");
+  }
+}

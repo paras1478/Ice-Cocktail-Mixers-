@@ -6,6 +6,7 @@ import { prisma } from "../src/lib/db.js";
 // Google itself is not called in tests: the verifier is replaced, the account logic and the route are real.
 vi.mock("../src/lib/google.js", () => ({
   googleClientIds: () => ["web-client"],
+  verifyGoogleAccessToken: async (t: string) => ({ email: "Google.User@Test.dev", name: "Gina Google" }),
   verifyGoogleIdToken: async (t: string) => {
     if (t.startsWith("bad")) { const { HttpError } = await import("../src/lib/errors.js"); throw new HttpError(401, "Google sign-in failed. Please try again."); }
     return { email: "Google.User@Test.dev", name: "Gina Google" };
