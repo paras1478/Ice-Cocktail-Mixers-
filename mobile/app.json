@@ -31,7 +31,8 @@
         {
           "locationWhenInUsePermission": "Ice and Mixers uses your location only to fill in your delivery address. We never track you."
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }

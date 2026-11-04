@@ -11,6 +11,7 @@ import type { Address, AppConfig, Order } from "../lib/types";
 import { useAuth } from "../context/AuthContext";
 import { Button, ErrorText, Field } from "../components";
 import { AddressForm, addressPayload, draftFromRecord, emptyAddress, validateAddress, type AddressDraft } from "../components/AddressForm";
+import GoogleSignIn from "../components/GoogleSignIn";
 import type { TabsParam } from "../navigation";
 
 const formatAddress = (a: Address) => [a.house, a.line1, a.landmark, a.area, a.district ?? a.city, a.state, a.pincode].filter(Boolean).join(", ");
@@ -97,6 +98,7 @@ function SignedOut() {
           {mode === "register" ? <Text style={{ color: c.muted, fontSize: 12, marginTop: -4, marginBottom: 8 }}>Use at least 8 characters.</Text> : null}
           <ErrorText>{error}</ErrorText>
           <Button title={mode === "login" ? "Log in" : "Create account"} onPress={submit} loading={busy} disabled={!email || !password || (mode === "register" && !name)} />
+          <GoogleSignIn onError={setError} />
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 14 }}>
             <Ionicons name="lock-closed-outline" size={13} color={c.muted} />
             <Text style={{ color: c.muted, fontSize: 12, marginLeft: 6 }}>Your details are used only to deliver your orders.</Text>

@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { randomBytes } from "node:crypto";
 import type { Prisma, PrismaClient, User } from "@prisma/client";
 import { HttpError } from "../lib/errors.js";
 
@@ -32,6 +33,27 @@ export async function authenticate(prisma: PrismaClient, email: string, password
   if (!user.isActive) throw new HttpError(403, "This account has been disabled. Please contact support.");
   // The existing record is reused (looked up by its unique email); only the login time changes.
   return prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+}
+
+/**
+ * Signs in with a Google account whose email Google has verified. An existing account with that email is reused (so a customer who
+ * registered with a password can also use Google); otherwise one is created with a random, unusable password.
+ */
+export async function googleAccount(prisma: PrismaClient, g: { email: string; name: string }): Promise<User> {
+  const email = g.email.trim().toLowerCase();
+  const found = await prisma.user.findUnique({ where: { email } });
+  if (found) {
+    if (!found.isActive) throw new HttpError(403, "This account has been disabled. Please contact support.");
+    return prisma.user.update({ where: { id: found.id }, data: { lastLoginAt: new Date() } });
+  }
+  const passwordHash = await bcrypt.hash(randomBytes(32).toString("hex"), 10);
+  const name = g.name.trim().slice(0, 80) || email.split("@")[0]!;
+  try {
+    return await prisma.user.create({ data: { name: name.length >= 2 ? name : `${name} `, email, passwordHash, lastLoginAt: new Date() } });
+  } catch (e) {
+    if ((e as { code?: string }).code === "P2002") return googleAccount(prisma, g); // a concurrent sign-in created it first
+    throw e;
+  }
 }
 
 export interface CustomerQuery {

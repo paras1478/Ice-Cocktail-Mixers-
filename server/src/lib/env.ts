@@ -31,6 +31,11 @@ const schema = z.object({
   PINCODE_API_URL: z.string().url().default("https://api.postalpincode.in/pincode"),
   // Geoapify geocoding (server-side): reverse geocoding (pin -> address) and delivery address / PIN search.
   GEOAPIFY_API_KEY: z.string().trim().min(1).optional(),
+  // Google sign-in. OAuth client IDs are public. GOOGLE_CLIENT_ID is the Web client (the website); the Android / iOS ones are for the mobile app.
+  // Leave them all unset to hide the "Continue with Google" buttons.
+  GOOGLE_CLIENT_ID: z.string().trim().min(1).optional(),
+  GOOGLE_ANDROID_CLIENT_ID: z.string().trim().min(1).optional(),
+  GOOGLE_IOS_CLIENT_ID: z.string().trim().min(1).optional(),
   GEOAPIFY_URL: z.string().url().default("https://api.geoapify.com"),
 });
 

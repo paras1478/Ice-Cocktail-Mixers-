@@ -26,6 +26,7 @@ publicRouter.get("/config", (_req, res) => {
     freeDeliveryThresholdMinor: pricingConfig.freeDeliveryThresholdMinor,
     taxRateBps: pricingConfig.taxRateBps,
     payments: { cod: env.ENABLE_COD === "true", card: Boolean(env.STRIPE_SECRET_KEY), online: onlinePaymentsEnabled() },
+    google: { webClientId: env.GOOGLE_CLIENT_ID ?? null, androidClientId: env.GOOGLE_ANDROID_CLIENT_ID ?? null, iosClientId: env.GOOGLE_IOS_CLIENT_ID ?? null },
     location: { pincodeLookup: true, reverseGeocoding: true, addressSearch: !!env.GEOAPIFY_API_KEY },
   });
 });

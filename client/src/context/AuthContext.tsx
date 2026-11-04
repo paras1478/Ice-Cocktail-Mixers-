@@ -7,6 +7,7 @@ interface AuthApi {
   loading: boolean;
   login: (email: string, password: string) => Promise<User>;
   register: (input: { name: string; email: string; password: string; phone?: string }) => Promise<User>;
+  google: (idToken: string) => Promise<User>;
   logout: () => Promise<void>;
   setUser: (u: User) => void;
 }
@@ -33,12 +34,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
     return data.user;
   }, []);
+  const google = useCallback(async (idToken: string) => {
+    const { data } = await api.post<{ user: User }>("/auth/google", { idToken });
+    setUser(data.user);
+    return data.user;
+  }, []);
   const logout = useCallback(async () => {
     await api.post("/auth/logout").catch(() => undefined);
     setUser(null);
   }, []);
 
-  const value = useMemo(() => ({ user, loading, login, register, logout, setUser }), [user, loading, login, register, logout]);
+  const value = useMemo(() => ({ user, loading, login, register, google, logout, setUser }), [user, loading, login, register, google, logout]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

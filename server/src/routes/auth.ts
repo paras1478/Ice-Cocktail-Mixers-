@@ -5,7 +5,8 @@ import { prisma } from "../lib/db.js";
 import { ah, parse } from "../lib/http.js";
 import { HttpError } from "../lib/errors.js";
 import { env } from "../lib/env.js";
-import { authenticate, changePassword, registerAccount, updateProfile } from "../services/accounts.js";
+import { verifyGoogleIdToken } from "../lib/google.js";
+import { authenticate, changePassword, googleAccount, registerAccount, updateProfile } from "../services/accounts.js";
 import { COOKIE, cookieOptions, optionalAuth, requireAuth, signToken } from "../middleware/auth.js";
 
 export const authRouter = Router();
@@ -48,6 +49,18 @@ authRouter.post(
     const b = parse(z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(1) }), req.body);
     // Same message for unknown email and wrong password so accounts cannot be probed.
     const user = await authenticate(prisma, b.email, b.password);
+    const token = signToken({ id: user.id, role: user.role });
+    res.cookie(COOKIE, token, cookieOptions).json({ user: publicUser(user), token });
+  }),
+);
+
+authRouter.post(
+  "/google",
+  limiter,
+  ah(async (req, res) => {
+    const b = parse(z.object({ idToken: z.string().min(20).max(4096) }), req.body);
+    const profile = await verifyGoogleIdToken(b.idToken);
+    const user = await googleAccount(prisma, profile);
     const token = signToken({ id: user.id, role: user.role });
     res.cookie(COOKIE, token, cookieOptions).json({ user: publicUser(user), token });
   }),

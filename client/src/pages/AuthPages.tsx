@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { GoogleButton } from "../components/GoogleButton";
 import { FieldError, PasswordInput, Spinner } from "../components/ui";
 
 export function RequireAuth({ children, admin = false }: { children: React.ReactNode; admin?: boolean }) {
@@ -33,6 +34,7 @@ export function LoginPage() {
         <div><label htmlFor="l-pass" className="label">Password</label><PasswordInput id="l-pass" autoComplete="current-password" value={password} onChange={setPassword} /></div>
         {error && <p role="alert" className="text-sm font-semibold text-danger">{error}</p>}
         <button className="btn-primary w-full" disabled={busy}>{busy ? "Logging in…" : "Log in"}</button>
+        <GoogleButton onDone={() => nav(from, { replace: true })} onError={setError} />
         <p className="text-center text-sm text-muted">New here? <Link to="/register" state={{ from }} className="font-semibold text-accent underline">Create an account</Link></p>
       </form>
     </div>
@@ -63,6 +65,7 @@ export function RegisterPage() {
         {field("name", "Name", "text", "name")}{field("email", "Email", "email", "email")}{field("phone", "Mobile (optional)", "tel", "tel-national")}{field("password", "Password (min 8 characters)", "password", "new-password")}
         {errors.form && <p role="alert" className="text-sm font-semibold text-danger">{errors.form}</p>}
         <button className="btn-primary w-full" disabled={busy}>{busy ? "Creating…" : "Create account"}</button>
+        <GoogleButton onDone={() => nav(from, { replace: true })} onError={(m) => setErrors({ form: m })} />
         <p className="text-center text-sm text-muted">Already registered? <Link to="/login" state={{ from }} className="font-semibold text-accent underline">Log in</Link></p>
       </form>
     </div>
