@@ -23,7 +23,8 @@ const warnedOrigins = new Set<string>();
 export function createApp() {
   const app = express();
   app.disable("x-powered-by");
-  app.use(helmet());
+  // same-origin-allow-popups (not helmet's default same-origin): keeps the opener link to Google's sign-in popup so it can report "closed" without COOP console warnings.
+  app.use(helmet({ crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" } }));
   // Product photos live in the web client (client/public/img). Serving them here lets the mobile app load "/img/..." from the API host (when the folder is deployed alongside).
   const imgDir = path.resolve(process.cwd(), "../client/public/img");
   if (fs.existsSync(imgDir)) app.use("/img", express.static(imgDir, { maxAge: "7d", index: false }));

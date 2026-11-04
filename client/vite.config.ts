@@ -26,7 +26,8 @@ const proxy = {
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { port: 5173, proxy },
-  preview: { port: 4173, proxy },
+  // Google sign-in opens a popup; this keeps the page able to talk to it (no COOP console warnings). Same header is set in vercel.json for production.
+  server: { port: 5173, proxy, headers: { "Cross-Origin-Opener-Policy": "same-origin-allow-popups" } },
+  preview: { port: 4173, proxy, headers: { "Cross-Origin-Opener-Policy": "same-origin-allow-popups" } },
   test: { environment: "jsdom", globals: true, setupFiles: ["./src/setupTests.ts"], css: false, testTimeout: 20000 },
 });
