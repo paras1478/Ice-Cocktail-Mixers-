@@ -27,3 +27,27 @@ export function parseOrigins(raw: string): string[] {
   }
   return out;
 }
+
+/**
+ * Parses CLIENT_ORIGIN_PATTERNS: origins whose FIRST host label contains one "*", e.g. "https://ice-cocktail-*-team-abc123.vercel.app"
+ * (Vercel preview URLs change on every deploy). Strict on purpose: https only; the "*" stays inside the first label (it can never match
+ * a dot, a port or another domain); the text AFTER the "*" in that label (your team/project suffix) must be at least 6 characters, so a
+ * bare prefix like "https://ice-*.vercel.app" or "https://*.vercel.app" (every Vercel project) is rejected.
+ */
+export function parseOriginPatterns(raw: string | undefined): RegExp[] {
+  const out: RegExp[] = [];
+  const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (const part of (raw ?? "").split(/[\s,]+/)) {
+    const v = part.trim().replace(/\/+$/, "").toLowerCase();
+    if (!v) continue;
+    const m = /^https:\/\/([a-z0-9-]*)\*([a-z0-9-]{6,})((?:\.[a-z0-9-]+){2,})$/.exec(v);
+    if (!m) throw new Error(`CLIENT_ORIGIN_PATTERNS contains an unsafe or invalid pattern: "${part.trim()}"`);
+    out.push(new RegExp(`^https://${escape(m[1])}[a-z0-9-]*${escape(m[2])}${escape(m[3])}$`));
+  }
+  return out;
+}
+
+/** True when the browser's Origin header is allowed: an exact configured origin, or a match of a (strict) pattern. */
+export function isOriginAllowed(origin: string, exact: string[], patterns: RegExp[]): boolean {
+  return exact.includes(origin) || patterns.some((re) => re.test(origin));
+}

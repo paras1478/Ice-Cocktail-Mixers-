@@ -3,9 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import helmet from "helmet";
 import cors from "cors";
+import { isOriginAllowed } from "./lib/origins.js";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
-import { allowSamplePrices, clientOrigins, env, trustProxy } from "./lib/env.js";
+import { allowSamplePrices, clientOriginPatterns, clientOrigins, env, trustProxy } from "./lib/env.js";
 import { publicProductWhere } from "./lib/publish.js";
 import { paymentRouter, razorpayWebhook } from "./routes/payments.js";
 import { prisma } from "./lib/db.js";
@@ -33,10 +34,10 @@ export function createApp() {
     cors({
       // Requests without an Origin header (same-site, curl, health checks) are allowed; browsers must come from a listed origin.
       origin: (origin, cb) => {
-        const ok = !origin || clientOrigins.includes(origin);
+        const ok = !origin || isOriginAllowed(origin, clientOrigins, clientOriginPatterns);
         if (!ok && !warnedOrigins.has(origin)) {
           warnedOrigins.add(origin); // once per origin; origins are public values, not secrets
-          console.warn(`[cors] blocked origin ${origin}. Allowed: ${clientOrigins.join(", ")}. Add it to CLIENT_ORIGIN (comma-separated) to allow it.`);
+          console.warn(`[cors] blocked origin ${origin}. Allowed: ${clientOrigins.join(", ")}. Add it to CLIENT_ORIGIN (comma-separated), or match it with CLIENT_ORIGIN_PATTERNS.`);
         }
         cb(null, ok);
       },

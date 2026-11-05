@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
-import { allowedOrigins, parseOrigins } from "./origins.js";
+import { allowedOrigins, parseOriginPatterns, parseOrigins } from "./origins.js";
 import { describeDbUrl, productionDbUrlProblem } from "./dbUrl.js";
 
 const schema = z.object({
@@ -8,6 +8,9 @@ const schema = z.object({
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   // Browser origin(s) allowed by CORS: one value or a comma-separated list, e.g. "https://app.vercel.app,https://staging.vercel.app".
   CLIENT_ORIGIN: z.string().min(1).default("http://localhost:5173"),
+  // Extra origins matched by pattern, for Vercel preview deployments whose URL changes every deploy, e.g.
+  // "https://ice-cocktail-*-pankaj-kumars-projects-d26ce2ff.vercel.app". One "*" in the first host label only; https only.
+  CLIENT_ORIGIN_PATTERNS: z.string().optional(),
   // "lax" when the site and API share a domain (or the API is reached through a /api rewrite). "none" when the frontend and the API are on
   // different sites (e.g. vercel.app + onrender.com) so the login cookie is sent with cross-site requests; "none" is HTTPS-only.
   COOKIE_SAMESITE: z.enum(["lax", "strict", "none"]).default("lax"),
@@ -59,6 +62,14 @@ if (env.NODE_ENV === "production") {
 export const clientOrigins = (() => {
   try {
     return allowedOrigins(parseOrigins(env.CLIENT_ORIGIN), env.NODE_ENV);
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  }
+})();
+export const clientOriginPatterns = (() => {
+  try {
+    return parseOriginPatterns(env.CLIENT_ORIGIN_PATTERNS);
   } catch (e) {
     console.error(e instanceof Error ? e.message : e);
     process.exit(1);

@@ -636,6 +636,28 @@ describe("CORS and deployment health", () => {
     expect(dev).toEqual(expect.arrayContaining(["https://ice-cocktail-beta.vercel.app", "http://localhost:5173", "http://127.0.0.1:5173"]));
     expect(new Set(dev).size).toBe(dev.length);
   });
+  it("matches Vercel preview URLs of one project only (strict patterns)", async () => {
+    const { parseOriginPatterns, isOriginAllowed } = await import("../src/lib/origins.js");
+    const exact = ["https://ice-cocktail-beta.vercel.app", "http://localhost:5173"];
+    const pats = parseOriginPatterns("https://ice-cocktail-*-pankaj-kumars-projects-d26ce2ff.vercel.app");
+    const ok = (o: string) => isOriginAllowed(o, exact, pats);
+    expect(ok("https://ice-cocktail-beta.vercel.app")).toBe(true);
+    expect(ok("http://localhost:5173")).toBe(true);
+    expect(ok("https://ice-cocktail-1nv3miyq8-pankaj-kumars-projects-d26ce2ff.vercel.app")).toBe(true); // the blocked preview URL
+    expect(ok("https://ice-cocktail-git-main-pankaj-kumars-projects-d26ce2ff.vercel.app")).toBe(true);
+    expect(ok("https://ice-cocktail-1nv3miyq8-someone-elses-projects-aaaa.vercel.app")).toBe(false); // another team
+    expect(ok("https://evil.vercel.app")).toBe(false);
+    expect(ok("https://ice-cocktail-x-pankaj-kumars-projects-d26ce2ff.vercel.app.evil.com")).toBe(false); // suffix trick
+    expect(ok("https://evil.com/ice-cocktail-x-pankaj-kumars-projects-d26ce2ff.vercel.app")).toBe(false);
+    expect(ok("https://a.b.ice-cocktail-x-pankaj-kumars-projects-d26ce2ff.vercel.app")).toBe(false); // no extra labels
+    expect(ok("http://ice-cocktail-x-pankaj-kumars-projects-d26ce2ff.vercel.app")).toBe(false); // https only
+    expect(ok("https://ice-cocktail--pankaj-kumars-projects-d26ce2ff.vercel.app")).toBe(true); // empty hash still a valid label
+    expect(ok("https://ice-cocktail-x-pankaj-kumars-projects-d26ce2ff.vercel.app:8443")).toBe(false); // ports never match
+    for (const bad of ["https://*.vercel.app", "*", "https://*", "http://ice-cocktail-*-x.vercel.app", "https://a*b*c-team.vercel.app", "https://ice-*.com", "https://*.com"]) {
+      expect(() => parseOriginPatterns(bad), bad).toThrow(/unsafe or invalid/);
+    }
+    expect(parseOriginPatterns(undefined)).toEqual([]);
+  });
   it("allows the configured origin (exact match, with credentials) and not others", async () => {
     const ok = await request(app).options("/api/categories").set("Origin", "http://localhost:5173").set("Access-Control-Request-Method", "GET").expect(204);
     expect(ok.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
