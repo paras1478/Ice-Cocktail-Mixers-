@@ -22,10 +22,11 @@ export default function Welcome({ onStart }: { onStart: () => void }) {
       <div className="flex flex-1 flex-col items-center justify-center px-6 pb-4 pt-6 text-center">
         {/* two tilted photo cards */}
         <div className="relative h-[270px] w-full max-w-[640px] sm:h-[340px]" aria-hidden>
-          <img src="/img/hero-ice.jpg" alt="" width={1400} height={934} fetchPriority="high"
-            className="absolute left-[2%] top-[18%] h-[58%] w-[58%] -rotate-[20deg] rounded-[28px] object-cover opacity-50 shadow-[0_32px_64px_rgba(13,8,5,0.45)]" />
-          <img src="/img/stock/ice-bucket.jpg" alt="" width={640} height={480}
-            className="absolute right-[2%] top-[6%] h-[66%] w-[52%] rotate-[24deg] rounded-[28px] object-cover opacity-50 shadow-[0_32px_64px_rgba(13,8,5,0.45)]" />
+          {/* cut-outs exported from the design: already rotated, with transparent corners */}
+          <img src="/img/welcome-card-drinks.webp" alt="" width={843} height={687} fetchPriority="high"
+            className="absolute left-0 top-[5%] w-[62%] opacity-50 drop-shadow-[0_28px_40px_rgba(13,8,5,0.5)]" />
+          <img src="/img/welcome-card-bucket.webp" alt="" width={715} height={668}
+            className="absolute right-0 top-0 w-[53%] opacity-50 drop-shadow-[0_28px_40px_rgba(13,8,5,0.5)]" />
           <span className="absolute left-1/2 top-1/2 h-52 w-52 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#e5ad52]/10 blur-[110px]" />
         </div>
 
