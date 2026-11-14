@@ -11,6 +11,7 @@ export default defineConfig({
       RAZORPAY_KEY_ID: "rzp_test_unitkey",
       RAZORPAY_KEY_SECRET: "unit_test_secret_value",
       RAZORPAY_WEBHOOK_SECRET: "unit_webhook_secret",
+      OPENAI_API_KEY: "sk-test-not-a-real-key", // the OpenAI API is mocked in tests; a developer's real key from .env is never used
       CLIENT_ORIGIN: "http://localhost:5173", // pinned so tests never depend on a developer's local .env
     },
     fileParallelism: false,

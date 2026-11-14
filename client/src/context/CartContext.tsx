@@ -23,6 +23,8 @@ interface CartApi {
   remove: (productId: string) => void;
   clear: () => void;
   refresh: () => void;
+  /** Replaces the browser cart with the saved server cart (used after the voice assistant changed it on the server). */
+  syncFromServer: () => Promise<void>;
 }
 
 const Ctx = createContext<CartApi | null>(null);
@@ -128,12 +130,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clear = useCallback(() => { setItems([]); setCode(""); }, []);
 
+  const syncFromServer = useCallback(async () => {
+    if (!user) return;
+    try {
+      const server = (await api.get("/cart")).data.items as { productId: string; quantity: number }[];
+      setItems(server.map((i) => ({ productId: i.productId, quantity: i.quantity })));
+    } catch { /* keep the current cart; the next page load reconciles it */ }
+  }, [user]);
+
   const value = useMemo<CartApi>(() => ({
     items, count: itemCount(items), quote, quoteLoading, quoteError, code,
     applyCode: (c) => setCode(c.trim().toUpperCase()),
     qtyOf: (id) => items.find((i) => i.productId === id)?.quantity ?? 0,
-    add, addMany, setQty, remove, clear, refresh: () => setTick((t) => t + 1),
-  }), [items, quote, quoteLoading, quoteError, code, add, addMany, setQty, remove, clear]);
+    add, addMany, setQty, remove, clear, refresh: () => setTick((t) => t + 1), syncFromServer,
+  }), [items, quote, quoteLoading, quoteError, code, add, addMany, setQty, remove, clear, syncFromServer]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

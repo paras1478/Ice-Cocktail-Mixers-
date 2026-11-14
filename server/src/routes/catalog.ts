@@ -8,6 +8,7 @@ import { optionalAuth, requireAdmin } from "../middleware/auth.js";
 import { isPublic, publicProductWhere } from "../lib/publish.js";
 import { isApprovedCategory } from "../lib/catalog.js";
 import { serializeProduct } from "../lib/serialize.js";
+import { searchWhere } from "../lib/search.js";
 
 export const productRouter = Router();
 export const categoryRouter = Router();
@@ -25,15 +26,6 @@ const listQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(60).default(12),
   includeInactive: z.enum(["true", "false"]).optional(),
-});
-
-const searchWhere = (q: string): Prisma.ProductWhereInput => ({
-  OR: [
-    { name: { contains: q, mode: "insensitive" } },
-    { brand: { contains: q, mode: "insensitive" } },
-    { description: { contains: q, mode: "insensitive" } },
-    { category: { name: { contains: q, mode: "insensitive" } } },
-  ],
 });
 
 productRouter.get(

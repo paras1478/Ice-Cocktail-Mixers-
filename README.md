@@ -186,3 +186,29 @@ Razorpay Dashboard (switch to **Test Mode**):
 3. Check `GET /api/payments/config` returns `{"enabled":true,"testMode":true}`, then the order shows as paid in My orders and in Admin → Orders.
 
 Refunds are not automatic: paid online orders are cancelled by an admin and refunded from the Razorpay Dashboard. Before going live, verify test mode end to end, then replace the keys with live keys and set `RAZORPAY_ALLOW_LIVE=true`.
+
+## AI voice shopping assistant (OpenAI Realtime + WebRTC)
+
+A floating **Ask AI** button (every customer page, never in admin) opens a full-screen voice assistant. The customer talks in Hindi, English or Hinglish; the assistant answers in the same language, recommends products from the **live database**, and manages the cart by voice. It cannot place orders or take payments (it sends the customer to Checkout).
+
+**Two transports, one conversation.** The browser first opens a **WebRTC** call (lowest latency). WebRTC needs UDP (or ICE-TCP) to OpenAI's media servers, which some networks, VPNs and firewalls block (symptom: ICE stays in `checking`; OpenAI answers as an ICE-lite server and has no TURN relay that could be configured, so TURN is not an option here). If no ICE check gets an answer within ~3.5 s (or the call has not opened after 6 s), it switches by itself to a **WebSocket** to OpenAI (PCM16 24 kHz over HTTPS port 443), which works wherever the website works, with the same tools, events and UI. The choice is remembered for 6 hours in `localStorage["voice-transport"]` so the next conversation on that network connects at once. Browser console lines starting with `[voice]` show which path was used (`live over webrtc` / `live over websocket`) and why.
+
+**How it works.** The browser asks `POST /api/voice/session` (login required). The server creates a short-lived (120 s) OpenAI *client secret* with the assistant's identity, voice, tools and turn detection fixed server-side, and returns only that secret. The browser opens a WebRTC call straight to OpenAI with it (microphone up, assistant voice down, events on a data channel). When the model calls a tool, the browser relays it to `POST /api/voice/tool`, the server validates it and runs it **as the logged-in customer**, and the real result goes back to the model, which then speaks. The permanent `OPENAI_API_KEY` lives only in the server environment; it is never in a `VITE_` variable, the bundle, a response or a log.
+
+| Tool (server: `services/voiceTools.ts`) | What it does |
+| --- | --- |
+| `search_products` | keywords, category, budget (₹), in-stock filter, sort; only approved, purchasable products |
+| `get_product_details` | description, label-only ingredients (null = not listed), price, pack sizes, live stock, optional "is N in stock" |
+| `find_alternatives` | in-stock products from the same category with the closest price |
+| `get_cart` | lines plus the authoritative total (the same quote checkout uses) |
+| `add_to_cart`, `set_cart_quantity`, `remove_from_cart` | the same rules as the cart API (shared `services/cart.ts`): stock limits, approved products, only the customer's own cart |
+
+Safeguards: login required for the session and every tool; arguments validated with zod (quantity 1-50, unknown tool names rejected, a user id in the body is ignored); rate limits (15 sessions / 10 min, 90 tool calls / min); the model is told to confirm an action only when the result says `ok: true`; results with `ok: false` are spoken honestly. Cart changes made by voice are written to the server cart, then the browser cart is refreshed from it.
+
+**Environment (server, Render):** `OPENAI_API_KEY` (required to enable it; unset = the button is hidden), optional `OPENAI_REALTIME_MODEL` (default `gpt-realtime`) and `OPENAI_REALTIME_VOICE` (default `marin`). Create the key in the OpenAI dashboard (API keys) with access to the Realtime API. `GET /api/config` returns `voice.enabled`. No other setup: the call goes browser -> OpenAI over HTTPS (`localhost` also counts as secure for the microphone). Cost: Realtime audio is billed per minute of conversation by OpenAI.
+
+**API:** `GET /api/voice/status` -> `{enabled}` · `POST /api/voice/session` -> `{clientSecret, expiresAt, model, callsUrl, realtimeUrl}` · `POST /api/voice/tool` with `{name, arguments}` -> `{result, cartChanged}` (all require login; errors use the usual `{error}` shape).
+
+**Tests:** `server/test/voice.test.ts` (session creation with OpenAI mocked, key never leaks, search/budget/stock/scope, details, alternatives, cart add/change/remove, stock limits, cart ownership, unknown tools), `client/src/lib/voice.test.ts` and `useRealtimeVoice.test.tsx` (fake microphone and WebRTC: states, interruption, tool relay, mute, cleanup, denied microphone, expired session, lost connection, offline), `VoiceAssistant.test.tsx` (UI). The live audio path (a real microphone talking to OpenAI) needs a browser and is verified by hand: open the shop, log in, press **Ask AI** and speak.
+
+**Troubleshooting the voice assistant.** `502` from `/api/voice/session`: the API could not reach `api.openai.com` (the server log says why, e.g. `UND_ERR_CONNECT_TIMEOUT` or `ENOTFOUND` = a flaky connection or DNS on the server's network); each request is retried up to 4 times with a short deadline and IPv4 is tried first. `503`: key missing or refused (check `OPENAI_API_KEY` on Render). "Could not open an audio connection ... WebRTC or WebSocket": both paths failed, so the device itself cannot reach OpenAI (VPN, firewall, offline); try another network such as a mobile hotspot. A client secret that was used for a WebRTC call cannot be reused for the WebSocket, so a spare one is requested in the background when WebRTC is slow to open.

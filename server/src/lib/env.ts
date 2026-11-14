@@ -40,6 +40,12 @@ const schema = z.object({
   GOOGLE_ANDROID_CLIENT_ID: z.string().trim().min(1).optional(),
   GOOGLE_IOS_CLIENT_ID: z.string().trim().min(1).optional(),
   GEOAPIFY_URL: z.string().url().default("https://api.geoapify.com"),
+  // AI voice shopping assistant (OpenAI Realtime over WebRTC). Backend only: the permanent key never reaches the browser, which gets a short-lived client secret.
+  // Leave OPENAI_API_KEY unset to hide the voice assistant.
+  OPENAI_API_KEY: z.string().trim().min(1).optional(),
+  OPENAI_REALTIME_MODEL: z.string().trim().min(1).default("gpt-realtime"),
+  OPENAI_REALTIME_VOICE: z.string().trim().min(1).default("marin"),
+  OPENAI_BASE_URL: z.string().url().default("https://api.openai.com"),
 });
 
 const parsed = schema.safeParse(process.env);

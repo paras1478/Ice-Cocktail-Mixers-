@@ -65,7 +65,7 @@ function PinForm({ idPrefix, label, buttonLabel, tone }: { idPrefix: string; lab
           <input id={`${idPrefix}-pin`} className="h-full min-h-11 w-full rounded-xl bg-transparent pl-9 pr-2 text-sm text-ink placeholder:text-muted focus:outline-none" inputMode="numeric" autoComplete="postal-code" maxLength={6} placeholder="Enter PIN code" value={pin} aria-invalid={!!err}
             aria-describedby={`${idPrefix}-pin-msg`} onChange={(e) => { setPin(cleanPin(e.target.value)); setErr(null); }} />
         </div>
-        <button className="shrink-0 rounded-xl bg-[#30261f] px-4 text-sm font-bold text-[#f8f5ed] transition hover:opacity-90 disabled:opacity-60" disabled={busy} aria-label={hero ? undefined : "Check availability for your delivery area"}>{buttonLabel}</button>
+        <button className="shrink-0 rounded-xl bg-[#1c0f08] px-4 text-sm font-bold text-[#f8f5ed] transition hover:opacity-90 disabled:opacity-60" disabled={busy} aria-label={hero ? undefined : "Check availability for your delivery area"}>{buttonLabel}</button>
       </form>
       {hero
         ? <p id={`${idPrefix}-pin-msg`} role="status" className="mt-2 min-h-5 text-sm font-semibold">{msg}</p>
@@ -97,7 +97,7 @@ function IceFeature({ products }: { products: Product[] }) {
   if (ice.length === 0) return null;
   return (
     <section className="container-x py-6 sm:py-10" aria-label="Ice bags">
-      <div className="grid overflow-hidden rounded-[28px] bg-feature text-on-footer shadow-lift md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)]">
+      <div className="grid overflow-hidden rounded-[28px] bg-feature text-on-feature shadow-lift md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)]">
         <div className="relative h-48 md:h-auto">
           <img src="/img/stock/ice-bucket.jpg" alt="" aria-hidden loading="lazy" width={640} height={480} className="absolute inset-0 h-full w-full object-cover" />
         </div>
@@ -107,7 +107,7 @@ function IceFeature({ products }: { products: Product[] }) {
           <p className="mt-3 max-w-md text-sm opacity-80">A quiet night in or a house full of friends. Pick the ice bag that belongs on your guest list.</p>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             {ice.map((p) => (
-              <div key={p.id} className="rounded-2xl bg-black/25 p-4">
+              <div key={p.id} className="rounded-2xl bg-feature-card p-4 text-on-feature-card">
                 <p className="text-xs opacity-70">{p.brand ?? "Ice"}</p>
                 <p className="mt-0.5 text-sm font-semibold">{p.name} · {p.packSize}</p>
                 <div className="mt-4 flex items-center justify-between">

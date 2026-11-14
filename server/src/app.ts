@@ -16,6 +16,7 @@ import { addressRouter } from "./routes/addresses.js";
 import { productRouter, categoryRouter, searchRouter } from "./routes/catalog.js";
 import { cartRouter } from "./routes/cart.js";
 import { orderRouter } from "./routes/orders.js";
+import { voiceRouter } from "./routes/voice.js";
 import { publicRouter, adminRouter } from "./routes/misc.js";
 import { errorHandler, notFound } from "./middleware/error.js";
 
@@ -80,6 +81,7 @@ export function createApp() {
   app.use("/api/cart", cartRouter);
   app.use("/api/orders", orderRouter);
   app.use("/api/payments", paymentRouter);
+  app.use("/api/voice", voiceRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api", publicRouter);
 

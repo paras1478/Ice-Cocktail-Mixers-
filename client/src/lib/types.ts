@@ -185,6 +185,7 @@ export interface AppConfig {
   freeDeliveryThresholdMinor: number;
   taxRateBps: number;
   payments: { cod: boolean; card: boolean; online?: boolean };
+  voice?: { enabled: boolean };
   location: { pincodeLookup: boolean; reverseGeocoding: boolean };
 }
 

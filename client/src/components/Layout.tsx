@@ -12,6 +12,7 @@ import { CategoryNav } from "./CategoryNav";
 import { SearchBar } from "./SearchBar";
 import { ErrorBoundary, FieldError, Logo, useAsync } from "./ui";
 import { PinFeedback } from "./DeliveryInfo";
+import { VoiceAssistant } from "./VoiceAssistant";
 
 /** Slim announcement bar. It shows the brand line until a PIN code is checked, then the honest delivery estimate. Never rendered inside admin routes. */
 function DeliveryBanner() {
@@ -121,7 +122,7 @@ function Header({ admin }: { admin: boolean }) {
         {!admin && <div className="mx-2 hidden max-w-lg flex-1 md:block"><SearchBar /></div>}
         {admin && <span className="chip ml-2 bg-badge text-badge-ink">Admin</span>}
         <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1">
-          <button onClick={toggle} className={`${textBtn} ${compact}`} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>{theme === "dark" ? <Sun className="h-[18px] w-[18px]" aria-hidden /> : <Moon className="h-[18px] w-[18px]" aria-hidden />}<span className="hidden lg:inline">Theme</span></button>
+          <button onClick={toggle} className={`${textBtn} ${compact}`} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>{theme === "dark" ? <Sun className="h-[18px] w-[18px]" aria-hidden /> : <Moon className="h-[18px] w-[18px]" aria-hidden />}<span className="hidden lg:inline" data-testid="theme-label">{theme === "dark" ? "Dark" : "Light"}</span></button>
           {user?.role === "ADMIN" && <Link to="/admin" className={iconBtn} aria-label="Admin dashboard"><LayoutDashboard className="h-5 w-5" aria-hidden /></Link>}
           {user ? (
             <>
@@ -177,6 +178,7 @@ export function Layout() {
       <main id="main" className="flex-1"><ErrorBoundary><Outlet /></ErrorBoundary></main>
       <Footer categories={cats.data} />
       <LocationModal />
+      {!admin && <VoiceAssistant />}
     </div>
   );
 }
