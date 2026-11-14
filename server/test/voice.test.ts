@@ -123,7 +123,7 @@ describe("voice tools: catalog", () => {
     const r = (await tool(a, "get_product_details", { product_id: tonic.id, quantity: 3 }).expect(200)).body.result;
     expect(r.product).toMatchObject({ ingredients: "Carbonated water, sugar, quinine", stock: 20, price: "₹85" });
     expect(r.product.packSizes).toHaveLength(2);
-    expect(r.canFulfillRequested).toBe(true);
+    expect(r.product).toMatchObject({ availability: "in_stock", availableQuantity: 20, requested: 3, canFulfillRequested: true });
     const none = (await tool(a, "get_product_details", { product_id: soda.id }).expect(200)).body.result;
     expect(none.product.ingredients).toBeNull(); // never guessed
     const unknown = (await tool(a, "get_product_details", { product_id: "nope" }).expect(200)).body.result;

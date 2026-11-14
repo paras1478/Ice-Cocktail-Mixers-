@@ -23,6 +23,7 @@ const searchArgs = z.object({
   min_price_rupees: opt(z.number().min(0).max(1_000_000)),
   max_price_rupees: opt(z.number().min(0).max(1_000_000)),
   in_stock_only: opt(z.boolean()),
+  quantity: opt(z.number().int().min(1).max(50)),
   sort: opt(z.enum(["popular", "price_asc", "price_desc"])),
   limit: opt(z.number().int().min(1).max(8)),
 });
@@ -44,7 +45,7 @@ export const voiceToolDefinitions = [
     type: "function",
     name: "search_products",
     description:
-      "Search the live ICE Cocktail catalog (non-alcoholic products only). Use short keywords from the customer's wish or mood (e.g. 'tonic', 'lemon', 'ice', 'fizzy', 'citrus'). Also use it for budgets and to list a category. Returns real products with ids, prices in rupees and stock.",
+      "Search the live ICE Cocktail catalog (non-alcoholic products only). Use short keywords from the customer's wish or mood (e.g. 'tonic', 'lemon', 'ice', 'fizzy', 'citrus'). Also use it for budgets and to list a category. Returns real products with ids, prices in rupees and LIVE stock from the database (availability, availableQuantity and, if you pass quantity, canFulfillRequested). If nothing in stock matches, it also lists matching products that are out of stock.",
     parameters: {
       type: "object",
       properties: {
@@ -52,7 +53,8 @@ export const voiceToolDefinitions = [
         category: { type: "string", description: "Optional category name or slug, from the list of categories you were given." },
         min_price_rupees: { type: "number" },
         max_price_rupees: { type: "number", description: "Budget ceiling in rupees, e.g. 150." },
-        in_stock_only: { type: "boolean", description: "Default true." },
+        in_stock_only: { type: "boolean", description: "Default true (hides products with zero stock). Pass false to include out-of-stock products too." },
+        quantity: { type: "integer", description: "How many the customer wants. Each product then says whether the live stock can fulfil it." },
         sort: { type: "string", enum: ["popular", "price_asc", "price_desc"] },
         limit: { type: "integer", description: "1-8, default 5." },
       },
@@ -64,7 +66,7 @@ export const voiceToolDefinitions = [
     description: "Get one product's description, ingredients (only if the label data exists), price, pack sizes and live stock. Use before answering questions about a product, price or availability.",
     parameters: {
       type: "object",
-      properties: { product_id: { type: "string", description: "The id from a search result." }, quantity: { type: "integer", description: "Optional: check whether this many are in stock." } },
+      properties: { product_id: { type: "string", description: "The id from a search result (best), or the product name the customer said." }, quantity: { type: "integer", description: "Optional: check whether this many are in stock." } },
       required: ["product_id"],
     },
   },
@@ -105,7 +107,19 @@ const clip = (s: string | null | undefined, n: number) => (s && s.length > n ? `
 const productInclude = { images: true, category: true } as const;
 type ProductRow = Prisma.ProductGetPayload<{ include: typeof productInclude }>;
 
-function summarize(p: ProductRow) {
+/** The live stock facts the assistant may state, straight from Product.stock (never cached, never inferred). */
+function stockFacts(p: { stock: number; lowStockAt: number }, requested?: number) {
+  const availability = p.stock <= 0 ? "out_of_stock" : p.stock <= p.lowStockAt ? "low_stock" : "in_stock";
+  return {
+    inStock: p.stock > 0,
+    availability,
+    availableQuantity: Math.max(0, p.stock),
+    // Only when the customer asked for a number: stock > 0 and enough of it means available; anything less is said as it is.
+    ...(requested ? { requested, canFulfillRequested: p.stock >= requested } : {}),
+  };
+}
+
+function summarize(p: ProductRow, requested?: number) {
   return {
     id: p.id,
     slug: p.slug,
@@ -117,8 +131,7 @@ function summarize(p: ProductRow) {
     price: label(p.priceMinor),
     // Prices in this catalog may be unverified samples; the assistant is told never to invent a discount or an original price.
     priceIsSample: p.priceStatus !== "VERIFIED",
-    inStock: p.stock > 0,
-    stockLeft: p.stock > 0 && p.stock <= p.lowStockAt ? p.stock : undefined,
+    ...stockFacts(p, requested),
     description: clip(p.description, 160),
     image: [...p.images].sort((x, y) => x.sortOrder - y.sortOrder)[0]?.url ?? null,
   };
@@ -127,10 +140,28 @@ function summarize(p: ProductRow) {
 const STOP = new Set(["the", "and", "for", "with", "some", "any", "kuch", "mujhe", "chahiye", "ek", "hai", "ki", "ka", "ke", "ko", "me", "mein"]);
 const tokens = (q?: string) => (q ?? "").toLowerCase().split(/[^a-z0-9ऀ-ॿ]+/).filter((t) => t.length >= 2 && !STOP.has(t)).slice(0, 5);
 
+/** Several products fit what the customer said (typically pack sizes of one product): the assistant must ask which one. */
+class AmbiguousProduct extends HttpError {
+  constructor(ref: string, public options: ReturnType<typeof summarize>[]) {
+    super(409, `Several products match "${ref}". Ask the customer which one they mean (for example the pack size), then use that product's id.`);
+  }
+}
+
+/**
+ * Finds a product from whatever the model passes: the id or slug from a search result, the SKU, or the product NAME as the customer said it
+ * (exact name first, then a name that contains it). The product's stock is NOT part of the lookup, so a product that is out of stock is found and
+ * reported as out of stock, and one that is in stock is always found; only "not in the store at all" ends as 404.
+ */
 async function findProduct(ref: string) {
-  const p = await prisma.product.findFirst({ where: { OR: [{ id: ref }, { slug: ref }] }, include: productInclude });
-  if (!p || !isPublic(p)) throw new HttpError(404, "I could not find that product in the store");
-  return p;
+  const q = ref.trim();
+  const direct = await prisma.product.findFirst({ where: { OR: [{ id: q }, { slug: q }, { sku: q }, { slug: q.toLowerCase().replace(/[^a-z0-9]+/g, "-") }] }, include: productInclude });
+  if (direct && isPublic(direct)) return direct;
+  const named = async (where: Prisma.ProductWhereInput) => prisma.product.findMany({ where: { AND: [publicProductWhere(), where] }, include: productInclude, orderBy: [{ popularity: "desc" }, { name: "asc" }], take: 6 });
+  let matches = await named({ name: { equals: q, mode: "insensitive" } });
+  if (!matches.length) matches = await named({ OR: [{ name: { contains: q, mode: "insensitive" } }, ...(q.split(/\s+/).length > 1 ? [{ AND: q.split(/\s+/).filter((w) => w.length > 1).map((w) => ({ name: { contains: w, mode: "insensitive" as const } })) }] : [])] });
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) throw new AmbiguousProduct(q, matches.map((m) => summarize(m)));
+  throw new HttpError(404, `There is no product called "${q}" in the store. Search the catalog before telling the customer it is not sold.`);
 }
 
 async function search(a: z.infer<typeof searchArgs>) {
@@ -146,7 +177,8 @@ async function search(a: z.infer<typeof searchArgs>) {
         lte: a.max_price_rupees !== undefined ? Math.round(a.max_price_rupees * 100) : undefined,
       },
     });
-  if (a.in_stock_only !== false) and.push({ stock: { gt: 0 } });
+  // Zero-stock products are hidden by default. When the customer names a quantity they stay visible, so "only 3 left, you asked for 5" can be said truthfully.
+  const stockOnly: Prisma.ProductWhereInput[] = a.in_stock_only !== false && !a.quantity ? [{ stock: { gt: 0 } }] : [];
   const ts = tokens(a.query);
   const keywords: Prisma.ProductWhereInput[] = ts.length ? [{ OR: ts.map(searchWhere) }] : [];
   const sort = a.sort ?? "popular";
@@ -157,17 +189,22 @@ async function search(a: z.infer<typeof searchArgs>) {
       include: productInclude,
       take: a.limit ?? 5,
     });
-  let rows = await run([...and, ...keywords]);
+  let rows = await run([...and, ...stockOnly, ...keywords]);
+  // Nothing IN STOCK matched the words: say so truthfully if matching products exist but are out of stock (a product is only "unavailable" when its real stock is zero).
+  const outOfStock = !rows.length && stockOnly.length && keywords.length
+    ? await prisma.product.findMany({ where: { AND: [...and, { stock: { lte: 0 } }, ...keywords] }, include: productInclude, orderBy: [{ popularity: "desc" }, { name: "asc" }], take: 5 })
+    : [];
   // Descriptions describe the product, not a mood, so "refreshing" or "fruity" often match nothing. Rather than answer "nothing found", fall back to the most
   // popular products that still fit the category, budget and stock, and say so, so the assistant recommends honestly (never claims a keyword match).
-  const keywordMiss = rows.length === 0 && keywords.length > 0;
-  if (keywordMiss) rows = await run(and);
+  const keywordMiss = rows.length === 0 && keywords.length > 0 && outOfStock.length === 0;
+  if (keywordMiss) rows = await run([...and, ...stockOnly]);
   return {
     ok: true,
     count: rows.length,
-    products: rows.map(summarize),
+    products: rows.map((p) => summarize(p, a.quantity)),
+    ...(outOfStock.length ? { outOfStockMatches: outOfStock.map((p) => summarize(p, a.quantity)), note: "These products match but their live stock is zero, so they are out of stock right now. Tell the customer that, and offer find_alternatives." } : {}),
     ...(keywordMiss && rows.length ? { noKeywordMatch: true, note: "No product mentions those words. These are our most popular products within the filters: pick the ones that genuinely suit the customer's wish (by name and category) and say you are suggesting based on what we have." } : {}),
-    ...(rows.length ? {} : { note: "No product fits these filters. Offer to widen the budget or suggest browsing a category." }),
+    ...(rows.length || outOfStock.length ? {} : { note: "No product fits these filters. Offer to widen the budget or suggest browsing a category." }),
   };
 }
 
@@ -179,14 +216,14 @@ async function details(ref: string, quantity?: number) {
   return {
     ok: true,
     product: {
-      ...summarize(p),
+      ...summarize(p, quantity),
       description: p.description,
       ingredients: p.details || null, // only ever from the product label; null means "not listed", never guess
       stock: p.stock,
-      packSizes: packs.map((v) => ({ id: v.id, packSize: v.packSize, price: label(v.priceMinor), inStock: v.stock > 0 })),
+      // Every pack size of this product with ITS OWN live stock (each variant is a separate product row with its own quantity).
+      packSizes: packs.map((v) => ({ id: v.id, packSize: v.packSize, price: label(v.priceMinor), ...stockFacts(v, quantity) })),
       image: [...p.images].sort((x, y) => x.sortOrder - y.sortOrder)[0]?.url ?? null,
     },
-    ...(quantity ? { requested: quantity, canFulfillRequested: p.stock >= quantity } : {}),
   };
 }
 
@@ -199,7 +236,7 @@ async function alternatives(ref: string) {
     take: 20,
   });
   const alts = pool.sort((x, y) => Math.abs(x.priceMinor - p.priceMinor) - Math.abs(y.priceMinor - p.priceMinor)).slice(0, 4);
-  return { ok: true, original: { id: p.id, name: p.name, inStock: p.stock > 0 }, count: alts.length, alternatives: alts.map(summarize) };
+  return { ok: true, original: { id: p.id, name: p.name, ...stockFacts(p) }, count: alts.length, alternatives: alts.map((a) => summarize(a)) };
 }
 
 async function cartSummary(userId: string) {
@@ -226,6 +263,20 @@ async function cartSummary(userId: string) {
   };
 }
 
+/** The customer's own cart line for an id or a product name (the model may pass either). */
+async function findCartLine(userId: string, ref: string) {
+  const items = (await loadCart(userId)).items;
+  const q = ref.trim().toLowerCase();
+  const byId = items.find((i) => i.productId === ref);
+  if (byId) return byId;
+  const exact = items.filter((i) => i.name.toLowerCase() === q);
+  if (exact.length === 1) return exact[0];
+  const partial = exact.length ? exact : items.filter((i) => i.name.toLowerCase().includes(q));
+  if (partial.length === 1) return partial[0];
+  if (partial.length > 1) throw new HttpError(409, `Several items in the cart match "${ref}": ${partial.map((i) => `${i.name} (${i.packSize})`).join(", ")}. Ask which one.`);
+  return undefined;
+}
+
 /** Runs one tool for `userId`. Failures the customer should hear about come back as { ok:false, error }; unexpected ones are logged and answered generically. */
 export async function runVoiceTool(userId: string, call: VoiceToolCall): Promise<Record<string, unknown>> {
   try {
@@ -246,7 +297,7 @@ export async function runVoiceTool(userId: string, call: VoiceToolCall): Promise
       }
       case "set_cart_quantity":
       case "remove_from_cart": {
-        const line = (await loadCart(userId)).items.find((i) => i.productId === call.arguments.product_id);
+        const line = await findCartLine(userId, call.arguments.product_id);
         if (!line) throw new HttpError(404, "That item is not in the cart");
         const qty = call.name === "remove_from_cart" ? 0 : call.arguments.quantity;
         if (qty === 0) await removeCartItem(userId, line.id);
@@ -255,6 +306,7 @@ export async function runVoiceTool(userId: string, call: VoiceToolCall): Promise
       }
     }
   } catch (e) {
+    if (e instanceof AmbiguousProduct) return { ok: false, error: e.message, options: e.options };
     if (e instanceof HttpError) return { ok: false, error: e.message };
     console.error("[voice] tool failed:", call.name, e instanceof Error ? e.message.split("\n")[0] : "unknown error");
     return { ok: false, error: "Something went wrong on our side. Please try again." };

@@ -35,9 +35,9 @@ voiceRouter.post(
     const cats = await prisma.category.findMany({ where: { isActive: true, slug: { in: [...APPROVED_CATEGORIES] } }, orderBy: { sortOrder: "asc" }, select: { name: true } });
     // A compact live snapshot of what is on sale right now, so the assistant can recommend by name; the tools stay the authority for price and stock.
     const products = await prisma.product.findMany({
-      where: { ...publicProductWhere(), stock: { gt: 0 } },
+      where: publicProductWhere(), // no stock filter and no stock in the snapshot: stock is only ever read live, through the tools
       orderBy: [{ popularity: "desc" }, { name: "asc" }],
-      take: 40,
+      take: 80,
       select: { name: true, packSize: true, priceMinor: true, category: { select: { name: true } } },
     });
     const catalog = products.map((p) => ({ name: p.name, category: p.category.name, packSize: p.packSize, price: `₹${p.priceMinor % 100 === 0 ? p.priceMinor / 100 : (p.priceMinor / 100).toFixed(2)}` }));
